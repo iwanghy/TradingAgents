@@ -19,6 +19,7 @@ from tradingagents.agents.utils.agent_states import (
     RiskDebateState,
 )
 from tradingagents.dataflows.config import set_config
+from tradingagents.dataflows.logging_config import setup_logging, get_logger
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
@@ -47,7 +48,7 @@ class TradingAgentsGraph:
         self,
         selected_analysts=["market", "social", "news", "fundamentals"],
         debug=False,
-        config: Dict[str, Any] = None,
+        config: Optional[Dict[str, Any]] = None,
         callbacks: Optional[List] = None,
     ):
         """Initialize the trading agents graph and components.
@@ -61,6 +62,20 @@ class TradingAgentsGraph:
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+
+        # Initialize logging system (before set_config)
+        logging_config = self.config.get("logging", {})
+        if logging_config.get("enabled", True):
+            setup_logging(
+                level=logging_config.get("data_api_level", "DEBUG"),
+                log_file=logging_config.get("file"),
+                format_type=logging_config.get("format", "detailed"),
+                console=logging_config.get("console", True)
+            )
+        
+        # Initialize logger for this class
+        self.logger = get_logger(__name__)
+        self.logger.info(f"TradingAgentsGraph initializing | debug={debug}")
 
         # Update the interface's config
         set_config(self.config)
@@ -144,6 +159,10 @@ class TradingAgentsGraph:
             reasoning_effort = self.config.get("openai_reasoning_effort")
             if reasoning_effort:
                 kwargs["reasoning_effort"] = reasoning_effort
+
+        # 添加自动重试配置，用于处理 API 限流（429错误）和网络错误
+        max_retries = self.config.get("max_llm_retries", 3)
+        kwargs["max_retries"] = max_retries
 
         return kwargs
 

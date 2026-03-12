@@ -1,4 +1,5 @@
 from typing import Annotated
+import logging
 
 # Import from vendor-specific modules
 from .y_finance import (
@@ -23,6 +24,30 @@ from .alpha_vantage import (
     get_global_news as get_alpha_vantage_global_news,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
+
+# Import yfinance exceptions
+try:
+    from yfinance.exceptions import YFRateLimitError
+except ImportError:
+    # yfinance not installed or older version
+    YFRateLimitError = None
+
+# Import Sina Finance module
+try:
+    from .sina_finance import (
+        get_sina_data_online,
+        get_sina_fundamentals,
+        get_sina_balance_sheet,
+        get_sina_income_statement,
+        get_sina_cashflow,
+    )
+except ImportError:
+    # sina_finance module not available
+    get_sina_data_online = None
+    get_sina_fundamentals = None
+    get_sina_balance_sheet = None
+    get_sina_income_statement = None
+    get_sina_cashflow = None
 
 # Configuration and routing logic
 from .config import get_config
@@ -63,6 +88,7 @@ TOOLS_CATEGORIES = {
 VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
+    "sina_finance",  # 新增：新浪财经数据源
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -71,6 +97,7 @@ VENDOR_METHODS = {
     "get_stock_data": {
         "alpha_vantage": get_alpha_vantage_stock,
         "yfinance": get_YFin_data_online,
+        "sina_finance": get_sina_data_online,  # 新增：新浪财经
     },
     # technical_indicators
     "get_indicators": {
@@ -81,18 +108,22 @@ VENDOR_METHODS = {
     "get_fundamentals": {
         "alpha_vantage": get_alpha_vantage_fundamentals,
         "yfinance": get_yfinance_fundamentals,
+        "sina_finance": get_sina_fundamentals,
     },
     "get_balance_sheet": {
         "alpha_vantage": get_alpha_vantage_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
+        "sina_finance": get_sina_balance_sheet,
     },
     "get_cashflow": {
         "alpha_vantage": get_alpha_vantage_cashflow,
         "yfinance": get_yfinance_cashflow,
+        "sina_finance": get_sina_cashflow,
     },
     "get_income_statement": {
         "alpha_vantage": get_alpha_vantage_income_statement,
         "yfinance": get_yfinance_income_statement,
+        "sina_finance": get_sina_income_statement,
     },
     # news_data
     "get_news": {
@@ -137,6 +168,9 @@ def route_to_vendor(method: str, *args, **kwargs):
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
 
+    logger = logging.getLogger(__name__)
+    logger.info(f"[ROUTE_DECISION] {method} -> {primary_vendors} | category={category}")
+
     if method not in VENDOR_METHODS:
         raise ValueError(f"Method '{method}' not supported")
 
@@ -154,9 +188,24 @@ def route_to_vendor(method: str, *args, **kwargs):
         vendor_impl = VENDOR_METHODS[method][vendor]
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
+        logger.info(f"[ROUTE_ATTEMPT] Trying vendor: {vendor} for {method}")
+
         try:
-            return impl_func(*args, **kwargs)
-        except AlphaVantageRateLimitError:
+            result = impl_func(*args, **kwargs)
+            logger.info(f"[ROUTE_SUCCESS] {method} via {vendor}")
+            return result
+        except AlphaVantageRateLimitError as e:
+            logger.warning(f"[RATE_LIMIT] Alpha Vantage | {method} | {str(e)}")
             continue  # Only rate limits trigger fallback
+        except Exception as e:
+            # Check if this is yfinance rate limit error
+            if YFRateLimitError and isinstance(e, YFRateLimitError):
+                logger.error(f"[RATE_LIMIT] yfinance | {method} | {str(e)}")
+                # yfinance does not fallback, re-raise immediately
+                raise RuntimeError(f"yfinance rate limit: {str(e)}")
+            else:
+                # Other errors: log and re-raise
+                logger.error(f"[VENDOR_ERROR] {vendor} | {method} | {type(e).__name__}: {str(e)}")
+                raise
 
     raise RuntimeError(f"No available vendor for '{method}'")

@@ -29,7 +29,7 @@ class UnifiedChatOpenAI(ChatOpenAI):
 
 
 class OpenAIClient(BaseLLMClient):
-    """Client for OpenAI, Ollama, OpenRouter, and xAI providers."""
+    """Client for OpenAI, Ollama, OpenRouter, xAI, and Zhipu providers."""
 
     def __init__(
         self,
@@ -58,6 +58,11 @@ class OpenAIClient(BaseLLMClient):
         elif self.provider == "ollama":
             llm_kwargs["base_url"] = "http://localhost:11434/v1"
             llm_kwargs["api_key"] = "ollama"  # Ollama doesn't require auth
+        elif self.provider == "zhipu":
+            llm_kwargs["base_url"] = "https://open.bigmodel.cn/api/coding/paas/v4"
+            api_key = os.environ.get("ZHIPU_API_KEY") or self.kwargs.get("api_key")
+            if api_key:
+                llm_kwargs["api_key"] = api_key
         elif self.base_url:
             llm_kwargs["base_url"] = self.base_url
 

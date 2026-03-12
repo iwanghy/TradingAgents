@@ -26,6 +26,19 @@ VALID_MODELS = {
         "gpt-4o",
         "gpt-4o-mini",
     ],
+    "zhipu": [
+        # GLM-4 series (2024-2025)
+        "glm-4-plus",
+        "glm-4-0520",
+        "glm-4-air",
+        "glm-4-flash",
+        "glm-4-long",
+        # GLM-4.7 series (最新)
+        "glm-4.7-plus",
+        "glm-4.7",
+        "glm-4.7-flash",
+        "glm-4.7-air",
+    ],
     "anthropic": [
         # Claude 4.5 series (2025)
         "claude-opus-4-5",
@@ -73,7 +86,7 @@ def validate_model(provider: str, model: str) -> bool:
     """
     provider_lower = provider.lower()
 
-    if provider_lower in ("ollama", "openrouter"):
+    if provider_lower in ("ollama", "openrouter", "zhipu"):
         return True
 
     if provider_lower not in VALID_MODELS:

@@ -3,48 +3,72 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import os
+import time
+import logging
+from yfinance.exceptions import YFRateLimitError
 from .stockstats_utils import StockstatsUtils
+
+logger = logging.getLogger(__name__)
 
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ):
+    """从 yfinance 获取股票历史数据，带详细日志"""
 
-    datetime.strptime(start_date, "%Y-%m-%d")
-    datetime.strptime(end_date, "%Y-%m-%d")
+    logger.info(f"[API_CALL] yfinance | symbol={symbol} | start={start_date} | end={end_date}")
+    start_time = time.time()
 
-    # Create ticker object
-    ticker = yf.Ticker(symbol.upper())
+    try:
+        datetime.strptime(start_date, "%Y-%m-%d")
+        datetime.strptime(end_date, "%Y-%m-%d")
 
-    # Fetch historical data for the specified date range
-    data = ticker.history(start=start_date, end=end_date)
+        # Create ticker object
+        ticker = yf.Ticker(symbol.upper())
+        logger.debug(f"[YFINANCE] Created Ticker object for {symbol}")
 
-    # Check if data is empty
-    if data.empty:
-        return (
-            f"No data found for symbol '{symbol}' between {start_date} and {end_date}"
-        )
+        # Fetch historical data for the specified date range
+        data = ticker.history(start=start_date, end=end_date)
+        duration = time.time() - start_time
 
-    # Remove timezone info from index for cleaner output
-    if data.index.tz is not None:
-        data.index = data.index.tz_localize(None)
+        # Check if data is empty
+        if data.empty:
+            logger.warning(f"[API_EMPTY] yfinance | No data found for {symbol}")
+            return (
+                f"No data found for symbol '{symbol}' between {start_date} and {end_date}"
+            )
 
-    # Round numerical values to 2 decimal places for cleaner display
-    numeric_columns = ["Open", "High", "Low", "Close", "Adj Close"]
-    for col in numeric_columns:
-        if col in data.columns:
-            data[col] = data[col].round(2)
+        logger.info(f"[API_SUCCESS] yfinance | {symbol} | records={len(data)} | duration={duration:.2f}s")
 
-    # Convert DataFrame to CSV string
-    csv_string = data.to_csv()
+        # Remove timezone info from index for cleaner output
+        if data.index.tz is not None:
+            data.index = data.index.tz_localize(None)
 
-    # Add header information
-    header = f"# Stock data for {symbol.upper()} from {start_date} to {end_date}\n"
-    header += f"# Total records: {len(data)}\n"
-    header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        # Round numerical values to 2 decimal places for cleaner display
+        numeric_columns = ["Open", "High", "Low", "Close", "Adj Close"]
+        for col in numeric_columns:
+            if col in data.columns:
+                data[col] = data[col].round(2)
 
-    return header + csv_string
+        # Convert DataFrame to CSV string
+        csv_string = data.to_csv()
+
+        # Add header information
+        header = f"# Stock data for {symbol.upper()} from {start_date} to {end_date}\n"
+        header += f"# Total records: {len(data)}\n"
+        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+        return header + csv_string
+
+    except YFRateLimitError as e:
+        duration = time.time() - start_time
+        logger.error(f"[RATE_LIMIT] yfinance | symbol={symbol} | error={str(e)} | duration={duration:.2f}s")
+        raise  # Re-raise for route_to_vendor to handle
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"[API_ERROR] yfinance | symbol={symbol} | error_type={type(e).__name__} | error={str(e)} | duration={duration:.2f}s")
+        raise
 
 def get_stock_stats_indicators_window(
     symbol: Annotated[str, "ticker symbol of the company"],
