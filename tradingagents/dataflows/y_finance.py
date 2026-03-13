@@ -7,8 +7,64 @@ import time
 import logging
 from yfinance.exceptions import YFRateLimitError
 from .stockstats_utils import StockstatsUtils
+from io import StringIO
 
 logger = logging.getLogger(__name__)
+
+
+def _is_a_share_symbol(symbol: str) -> bool:
+    """
+    检测是否为A股代码
+
+    Args:
+        symbol: 股票代码
+
+    Returns:
+        bool: True表示A股,False表示其他市场
+    """
+    # 移除可能的点号后缀
+    symbol_clean = symbol.split('.')[0].upper()
+
+    # 检查是否为纯数字且长度为6位
+    if symbol_clean.isdigit() and len(symbol_clean) == 6:
+        return True
+
+    # 检查是否有sh/sz前缀
+    if symbol_clean.startswith(('SH', 'SZ')):
+        # 移除前缀后检查是否为6位数字
+        code = symbol_clean[2:]
+        if code.isdigit() and len(code) == 6:
+            return True
+
+    return False
+
+
+def _convert_to_sina_format(symbol: str) -> str:
+    """
+    将股票代码转换为新浪财经格式
+
+    Args:
+        symbol: 股票代码
+
+    Returns:
+        str: 新浪财经格式的股票代码（sh600519或sz000001）
+    """
+    # 移除可能的点号后缀
+    symbol_clean = symbol.split('.')[0].upper()
+
+    # 如果已经是新浪格式
+    if symbol_clean.startswith(('SH', 'SZ')):
+        return symbol_clean.lower()
+
+    # 如果是6位数字,判断上海或深圳
+    if symbol_clean.isdigit() and len(symbol_clean) == 6:
+        if symbol_clean.startswith('6'):
+            return f"sh{symbol_clean}"
+        else:
+            return f"sz{symbol_clean}"
+
+    # 其他情况返回原样
+    return symbol
 
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
@@ -217,15 +273,21 @@ def _get_stock_stats_bulk(
     Optimized bulk calculation of stock stats indicators.
     Fetches data once and calculates indicator for all available dates.
     Returns dict mapping date strings to indicator values.
+
+    For A-shares (Chinese stocks), uses sina_finance data source.
+    For other markets, uses yfinance data source.
     """
     from .config import get_config
     import pandas as pd
     from stockstats import wrap
     import os
-    
+
     config = get_config()
     online = config["data_vendors"]["technical_indicators"] != "local"
-    
+
+    # Check if this is an A-share symbol
+    is_a_share = _is_a_share_symbol(symbol)
+
     if not online:
         # Local data path
         try:
@@ -242,52 +304,96 @@ def _get_stock_stats_bulk(
         # Online data fetching with caching
         today_date = pd.Timestamp.today()
         curr_date_dt = pd.to_datetime(curr_date)
-        
+
         end_date = today_date
         start_date = today_date - pd.DateOffset(years=15)
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
-        
+
         os.makedirs(config["data_cache_dir"], exist_ok=True)
-        
-        data_file = os.path.join(
-            config["data_cache_dir"],
-            f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
-        )
-        
-        if os.path.exists(data_file):
-            data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"])
-        else:
-            data = yf.download(
-                symbol,
-                start=start_date_str,
-                end=end_date_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
+
+        # Use different data sources and file naming for A-shares vs others
+        if is_a_share:
+            data_file = os.path.join(
+                config["data_cache_dir"],
+                f"{symbol}-sina-data-{start_date_str}-{end_date_str}.csv",
             )
-            data = data.reset_index()
-            data.to_csv(data_file, index=False)
-        
+
+            if os.path.exists(data_file):
+                data = pd.read_csv(data_file)
+                data["Date"] = pd.to_datetime(data["Date"])
+            else:
+                # Use sina_finance for A-shares
+                from .sina_finance import get_sina_data_online
+
+                sina_symbol = _convert_to_sina_format(symbol)
+                logger.info(f"[A_SHARE] Using sina_finance for {symbol} -> {sina_symbol}")
+
+                # Get data from sina_finance
+                csv_data = get_sina_data_online(sina_symbol, start_date_str, end_date_str)
+
+                # Parse CSV data
+                if csv_data.startswith("Error:") or csv_data.startswith("No data"):
+                    raise Exception(f"Sina Finance API error: {csv_data}")
+
+                # Extract CSV lines from response
+                lines = csv_data.split('\n')
+                csv_lines = []
+                for line in lines:
+                    if not line.startswith('#') and line.strip():
+                        csv_lines.append(line)
+
+                if not csv_lines:
+                    raise Exception(f"No valid data from Sina Finance for {symbol}")
+
+                # Parse CSV
+                data = pd.read_csv(StringIO('\n'.join(csv_lines)))
+
+                # Cache the data
+                data.to_csv(data_file, index=False)
+                logger.info(f"[A_SHARE] Cached {len(data)} records from sina_finance")
+        else:
+            # Use yfinance for non-A-shares
+            data_file = os.path.join(
+                config["data_cache_dir"],
+                f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
+            )
+
+            if os.path.exists(data_file):
+                data = pd.read_csv(data_file)
+                data["Date"] = pd.to_datetime(data["Date"])
+            else:
+                data = yf.download(
+                    symbol,
+                    start=start_date_str,
+                    end=end_date_str,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                data = data.reset_index()
+                data.to_csv(data_file, index=False)
+
         df = wrap(data)
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-    
+        # Convert Date to string if it's datetime, otherwise keep as is
+        if pd.api.types.is_datetime64_any_dtype(df["Date"]):
+            df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+
     # Calculate the indicator for all rows at once
     df[indicator]  # This triggers stockstats to calculate the indicator
-    
+
     # Create a dictionary mapping date strings to indicator values
     result_dict = {}
     for _, row in df.iterrows():
         date_str = row["Date"]
         indicator_value = row[indicator]
-        
+
         # Handle NaN/None values
         if pd.isna(indicator_value):
             result_dict[date_str] = "N/A"
         else:
             result_dict[date_str] = str(indicator_value)
-    
+
     return result_dict
 
 
