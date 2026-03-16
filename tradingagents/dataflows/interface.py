@@ -12,6 +12,7 @@ from .y_finance import (
     get_insider_transactions as get_yfinance_insider_transactions,
 )
 from .yfinance_news import get_news_yfinance, get_global_news_yfinance
+from .akshare_news import get_akshare_stock_news, get_akshare_global_news
 from .alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
     get_indicator as get_alpha_vantage_indicator,
@@ -127,10 +128,12 @@ VENDOR_METHODS = {
     },
     # news_data
     "get_news": {
+        "akshare": lambda ticker, start, end: get_akshare_stock_news(symbol=ticker, limit=20),
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
+        "akshare": lambda curr_date, days, limit: get_akshare_global_news(curr_date=curr_date.replace("-", ""), limit=limit),
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },

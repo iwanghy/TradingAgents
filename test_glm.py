@@ -36,9 +36,9 @@ def main():
     # 配置使用 GLM 4.5
     config = DEFAULT_CONFIG.copy()
     config["llm_provider"] = "zhipu"
-    config["deep_think_llm"] = "glm-4.5-air"
+    config["deep_think_llm"] = "glm-4.7"
     config["quick_think_llm"] = "glm-4.5-air"
-    config["max_debate_rounds"] = 1
+    config["max_debate_rounds"] = 3
     config["max_llm_retries"] = 3  # 自动重试 3 次，处理 API 限流
 
     # 是否生成中文报告
@@ -54,15 +54,14 @@ def main():
     print(f"  - 中文报告: {'是' if translate_to_chinese else '否'}")
     print(f"  - Markdown导出: {'是' if generate_markdown else '否'}")
 
-    # 选择 A 股典型股票（贵州茅台）
-    ticker = "sh600941"  # 贵州茅台
+    # 选择 A 股典型股票
+    ticker = "sh600941"  # 
     from datetime import datetime, timedelta
     trade_date = datetime.now().strftime('%Y-%m-%d')  # 使用当前日期
 
     print(f"\n📈 分析目标:")
-    print(f"  - 股票: {ticker} (贵州茅台)")
+    print(f"  - 股票: {ticker}")
     print(f"  - 日期: {trade_date} (最近数据)")
-    print(f"  - 数据源: 新浪财经（避开 yfinance 速率限制）")
     print(f"  - 分析范围: 最近 30 天")
 
     print(f"\n⏳ 开始分析...")
