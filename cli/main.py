@@ -25,6 +25,7 @@ from rich.rule import Rule
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.graph.report_generator import ReportGenerator
 from cli.models import AnalystType
 from cli.utils import *
 from cli.announcements import fetch_announcements, display_announcements
@@ -1158,6 +1159,19 @@ def run_analysis():
             report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
+
+            # Generate HTML report
+            console.print("\n🌐 Generating HTML report...")
+            generator = ReportGenerator(config)
+            html_report = generator.generate_html_report_with_llm(
+                final_state,
+                decision,
+                translate=False  # CLI default: English
+            )
+            html_filename = f"{selections['ticker']}_{selections['analysis_date']}_English_Report.html"
+            html_path = save_path / html_filename
+            generator.save_html_report(html_report, str(html_path))
+            console.print(f"[green]✓ HTML report saved to:[/green] {html_path.resolve()}")
         except Exception as e:
             console.print(f"[red]Error saving report: {e}[/red]")
 

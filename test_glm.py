@@ -98,7 +98,20 @@ def main():
 
             generator.save_report(markdown_report, report_path)
 
-            print(f"✅ 报告已保存到: {report_path}")
+            print(f"✅ Markdown 报告已保存到: {report_path}")
+
+            # 生成 HTML 报告
+            print("\n🌐 正在生成 HTML 报告...")
+            html_report = generator.generate_html_report_with_llm(
+                state,
+                decision,
+                translate=translate_to_chinese
+            )
+            html_filename = f"{ticker}_{trade_date}_{'中文' if translate_to_chinese else '英文'}报告.html"
+            html_path = f"reports/{html_filename}"
+            generator.save_html_report(html_report, html_path)
+            print(f"✅ HTML 报告已保存到: {html_path}")
+
             print("\n💡 提示:")
             print("  - 报告包含完整的分析过程和决策依据")
             print("  - 所有分析均已翻译为中文" if translate_to_chinese else "")
