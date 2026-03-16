@@ -50,6 +50,21 @@ except ImportError:
     get_sina_income_statement = None
     get_sina_cashflow = None
 
+# Import akshare fundamentals module
+try:
+    from .akshare_fundamentals import (
+        get_akshare_fundamentals,
+        get_akshare_balance_sheet,
+        get_akshare_cashflow,
+        get_akshare_income_statement,
+    )
+except ImportError:
+    # akshare_fundamentals module not available
+    get_akshare_fundamentals = None
+    get_akshare_balance_sheet = None
+    get_akshare_cashflow = None
+    get_akshare_income_statement = None
+
 # Configuration and routing logic
 from .config import get_config
 
@@ -90,6 +105,7 @@ VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
     "sina_finance",  # 新增：新浪财经数据源
+    "akshare",       # 新增：akshare 数据源（A 股基本面数据）
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -107,21 +123,25 @@ VENDOR_METHODS = {
     },
     # fundamental_data
     "get_fundamentals": {
+        "akshare": get_akshare_fundamentals,
         "alpha_vantage": get_alpha_vantage_fundamentals,
         "yfinance": get_yfinance_fundamentals,
         "sina_finance": get_sina_fundamentals,
     },
     "get_balance_sheet": {
+        "akshare": get_akshare_balance_sheet,
         "alpha_vantage": get_alpha_vantage_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
         "sina_finance": get_sina_balance_sheet,
     },
     "get_cashflow": {
+        "akshare": get_akshare_cashflow,
         "alpha_vantage": get_alpha_vantage_cashflow,
         "yfinance": get_yfinance_cashflow,
         "sina_finance": get_sina_cashflow,
     },
     "get_income_statement": {
+        "akshare": get_akshare_income_statement,
         "alpha_vantage": get_alpha_vantage_income_statement,
         "yfinance": get_yfinance_income_statement,
         "sina_finance": get_sina_income_statement,

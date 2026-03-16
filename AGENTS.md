@@ -53,23 +53,38 @@ python test.py
 
 **⚠️ 必须在 conda 虚拟环境中运行测试**
 
-项目使用简单的测试脚本（`test.py`），不使用 pytest 框架：
+项目提供多个测试脚本，支持多种运行方式：
 
 ```bash
 # 1. 确保环境已激活
 conda activate tradingagents
 
-# 2. 运行测试
+# 2. 运行主测试脚本
 python test.py
 
-# 或使用模块方式运行
-python -m test
+# 3. 运行特定测试文件（项目包含多个 test_*.py 文件）
+python test_news_api.py          # 测试新闻 API
+python test_a_share_fundamentals.py  # 测试 A 股基本面数据
+python test_sina_finance.py      # 测试新浪财经数据源
+python test_yfinance_ratelimit.py  # 测试 yfinance 限流处理
 
-# 如需 pytest 支持运行单个测试函数，需先安装 pytest：
+# 4. 使用 pytest 运行单个测试函数（需先安装 pytest）
 pip install pytest
-pytest test.py::test_function_name
-pytest -k "test_pattern"
+pytest test_news_api.py::test_yfinance_news  # 运行单个测试
+pytest test_news_api.py -k "news"            # 运行匹配的测试
+pytest test_a_share_indicators.py::test_sina_format_conversion  # 运行特定测试
 ```
+
+**可用测试文件**：
+- `test.py` - 主测试脚本
+- `test_news_api.py` - 新闻 API 测试
+- `test_a_share_fundamentals.py` - A 股基本面数据测试
+- `test_a_share_indicators.py` - A 股技术指标测试
+- `test_sina_finance.py` - 新浪财经数据源测试
+- `test_yfinance_ratelimit.py` - yfinance 限流处理测试
+- `test_translation_*.py` - 翻译功能测试
+- `test_html_*.py` - HTML 生成测试
+- `test_report_generator.py` - 报告生成器测试
 
 ### 代码质量工具
 
@@ -90,7 +105,25 @@ black tradingagents/ cli/ # 格式化
 ruff check tradingagents/ cli/  # lint
 ```
 
+## 快速参考
+
+| 类别 | 说明 |
+|------|------|
+| **Python 版本** | 最低 3.10（推荐 3.10 或 3.13）|
+| **环境管理** | conda 虚拟环境（必需）|
+| **LLM 提供商** | OpenAI, Google, Anthropic, xAI, OpenRouter, Ollama |
+| **数据供应商** | yfinance, Alpha Vantage, sina_finance, akshare |
+| **测试框架** | 简单脚本（可选 pytest）|
+
 ## 代码风格指南
+
+| 类型 | 约定 | 示例 |
+|------|------|------|
+| 函数 | snake_case | `create_risk_manager()`, `get_stock_data()` |
+| 类 | PascalCase | `TradingAgentsGraph`, `OpenAIClient` |
+| 常量 | UPPER_SNAKE_CASE | `DEFAULT_CONFIG`, `TOOLS_CATEGORIES` |
+| 变量 | snake_case | `company_name`, `market_research_report` |
+| 私有 | 前缀下划线 | `_is_reasoning_model()` |
 
 ### 导入组织
 
@@ -141,16 +174,6 @@ def get_stock_data(
 
 **规则**：公共函数必须有类型提示，使用 `Optional` 表示可选参数。
 
-### 命名约定
-
-| 类型 | 约定 | 示例 |
-|------|------|------|
-| 函数 | snake_case | `create_risk_manager()`, `get_stock_data()` |
-| 类 | PascalCase | `TradingAgentsGraph`, `OpenAIClient` |
-| 常量 | UPPER_SNAKE_CASE | `DEFAULT_CONFIG`, `TOOLS_CATEGORIES` |
-| 变量 | snake_case | `company_name`, `market_research_report` |
-| 私有 | 前缀下划线 | `_is_reasoning_model()` |
-
 ### 设计模式
 
 **工厂模式**（代理和 LLM 客户端）：
@@ -174,6 +197,15 @@ class BaseLLMClient(ABC):
         pass
 ```
 
+**路由器模式**（数据供应商）：
+
+```python
+from tradingagents.dataflows.interface import route_to_vendor
+
+# 自动路由到配置的供应商，支持 fallback
+result = route_to_vendor("get_stock_data", "AAPL", "2024-01-01", "2024-01-31")
+```
+
 ### 错误处理
 
 ```python
@@ -188,6 +220,11 @@ try:
 except AlphaVantageRateLimitError:
     continue  # 触发 fallback
 ```
+
+**异常层次**：
+- 工具函数：返回错误消息字符串
+- 数据层：使用自定义异常（如 `AlphaVantageRateLimitError`）
+- 路由层：捕获异常并尝试 fallback 供应商
 
 ### 文档字符串
 
@@ -384,6 +421,61 @@ TRADINGAGENTS_RESULTS_DIR=./results
 5. **工厂函数**: 创建代理使用 `create_*` 工厂函数
 6. **LLM 客户端**: 通过 `create_llm_client()` 工厂创建
 7. **Python 版本**: 最低支持 Python 3.10
+
+## 重要架构模式
+
+### 数据供应商路由系统
+
+项目使用灵活的数据供应商路由系统，支持多个数据源（yfinance、alpha_vantage、sina_finance）：
+
+```python
+from tradingagents.dataflows.interface import route_to_vendor
+
+# 自动路由到配置的供应商，支持 fallback
+result = route_to_vendor("get_stock_data", "AAPL", "2024-01-01", "2024-01-31")
+
+# 配置类别级供应商（影响整个工具类别）
+config["data_vendors"] = {
+    "core_stock_apis": "sina_finance",     # 优先使用新浪财经（避开 yfinance 限流）
+    "technical_indicators": "yfinance",
+    "fundamental_data": "sina_finance",
+    "news_data": "yfinance",
+}
+
+# 配置工具级供应商（覆盖类别配置）
+config["tool_vendors"] = {
+    "get_stock_data": "alpha_vantage",  # 覆盖 core_stock_apis 默认值
+}
+```
+
+**优先级**: 工具级配置 > 类别级配置 > 默认值
+
+### 工具函数约定
+
+所有工具函数（在 `tradingagents/agents/utils/` 中）遵循以下模式：
+
+```python
+def get_stock_data(
+    symbol: Annotated[str, "ticker symbol"],
+    start_date: Annotated[str, "yyyy-mm-dd format"],
+    end_date: Annotated[str, "yyyy-mm-dd format"],
+) -> str:
+    """获取股票数据的工具函数。
+
+    返回格式化为字符串的数据或错误消息。
+    """
+    # 实现中包含：
+    # 1. 通过 route_to_vendor 路由到配置的数据供应商
+    # 2. 处理异常并返回友好的错误消息
+    # 3. 使用 logging 而不是 print
+    pass
+```
+
+**关键规则**：
+- 使用 `Annotated` 添加参数描述（供 LLM 理解）
+- 返回字符串（成功时返回数据，失败时返回错误消息）
+- 通过 `route_to_vendor` 调用数据源
+- 不抛出异常，而是返回错误消息字符串
 
 ## 故障排查
 

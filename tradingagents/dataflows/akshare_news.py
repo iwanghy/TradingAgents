@@ -38,7 +38,21 @@ def get_akshare_stock_news(
     try:
         logger.info(f"[AKSHARE] 获取股票 {symbol} 新闻")
 
-        df = ak.stock_news_em(symbol=symbol)
+        # 转换股票代码格式为akshare期望的格式（纯数字）
+        # akshare.stock_news_em 期望纯数字代码，不支持前缀（如sh600900）
+        cleaned_symbol = symbol
+        if isinstance(symbol, str):
+            # 移除前缀（sh, sz, SH, SZ）和后缀（.SS, .SZ）
+            cleaned_symbol = symbol.upper()
+            # 移除上海/深圳前缀
+            if cleaned_symbol.startswith(('SH', 'SZ')):
+                cleaned_symbol = cleaned_symbol[2:]
+            # 移除交易所后缀
+            cleaned_symbol = cleaned_symbol.replace('.SS', '').replace('.SZ', '')
+
+        logger.info(f"[AKSHARE] 代码转换: {symbol} -> {cleaned_symbol}")
+
+        df = ak.stock_news_em(symbol=cleaned_symbol)
 
         if df is None or len(df) == 0:
             return f"⚠️ 未找到股票 {symbol} 的新闻"

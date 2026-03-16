@@ -128,7 +128,7 @@ class ReportGenerator:
             elif "400" in error_msg or "prompt" in error_msg:
                 print(f"   原因: 内容格式问题")
                 return f"[翻译失败-格式问题] {text}"
-            elif "401" in error_msg or "auth" in error_msg: hello, 昊宇，你好，现在是用qnn2.33量化以后能正常转出qnn模型（需要把输入prompt_mask的类型从bool变成float32能正常转出qnn, 用unit8也会报错），然后使用mage-nn-run推理报错：打印的prompt_mask输入的type是invalid,
+            elif "401" in error_msg or "auth" in error_msg:
                 print(f"   原因: API认证失败")
                 return f"[翻译失败-认证问题] {text}"
             else:
@@ -471,6 +471,8 @@ class ReportGenerator:
         """
         prompt = f"""你是一个专业的金融报告设计师。请根据以下 Markdown 分析报告，生成一个面向投资小白的视觉化 HTML 报告。
 
+**重要：本报告专为手机阅读设计，使用固定布局（非响应式）**
+
 **设计主题和风格**：
 - 使用 Bloomberg Terminal 暗色主题风格
 - 背景颜色：纯黑色 #000000
@@ -479,24 +481,26 @@ class ReportGenerator:
 - 边框和分隔线颜色：深灰色 #1A1A1A
 - 整体风格专业、简洁、高对比度
 
-**布局要求**：
-- 单页面滚动设计，禁止分页
-- 内容区域最大宽度 1200px，居中对齐
-- 总高度控制在 2000-3000px 之间（相当于 2 页 A4 纸）
+**布局要求（手机固定布局）**：
+- 专为手机屏幕设计：页面固定宽度 375px（iPhone标准宽度）
+- 单页面垂直滚动设计，禁止分页
+- 内容区域宽度：343px（375px - 左右各16px边距）
 - 执行摘要（决策卡片）必须置于页面最顶部
 - 使用清晰的视觉层次引导阅读顺序
+- 所有尺寸使用固定像素值，不使用响应式设计
 
-**决策卡片设计**：
+**决策卡片设计（手机适配）**：
 - 决策卡片必须是页面的第一个视觉元素
+- 卡片宽度：343px（375px - 左右各16px）
 - 根据决策类型使用不同的左边框颜色和强调色：
   * 买入（BUY）：主色调 #4AF6C3（青绿色）
   * 卖出（SELL）：主色调 #FF433D（红色）
   * 持有（HOLD）：主色调 #0068FF（蓝色）
-- 卡片内边距 24px
-- 左边框宽度 4px，颜色与决策类型匹配
+- 卡片内边距：20px（上下左右）
+- 左边框宽度：4px，颜色与决策类型匹配
 - 卡片背景色略深于页面背景（建议 #0A0A0A）
-- 决策文字使用大号字体加粗显示
-- 卡片应包含股票代码、分析日期、决策类型
+- 决策文字字体大小：28px，加粗显示
+- 卡片应包含股票代码（18px）、分析日期（14px）、决策类型（28px加粗）
 
 **技术限制**：
 - 生成单个独立的 HTML 文件
@@ -506,6 +510,19 @@ class ReportGenerator:
 - 使用 UTF-8 编码
 - 使用语义化 HTML5 标签（header, main, section, article, footer 等）
 - 确保所有标签正确闭合和嵌套
+
+**必须包含的CSS基础样式**（在<style>标签中）：
+
+请确保生成的HTML包含以下基础CSS样式（不需要使用代码块格式，直接在style标签中写入）：
+
+- 重置样式：所有元素margin和padding为0，box-sizing为border-box
+- body样式：宽度375px，字体18px，行高32px，背景色#000000，文字色#E9ECF1
+- h1样式：字体32px，行高40px，上下边距20px
+- h2样式：字体26px，行高36px，上下边距20px
+- h3样式：字体22px，行高30px，上下边距20px
+- p样式：下边距24px，左对齐
+- .container样式：宽度343px，左右padding各16px
+- 决策卡片样式：padding 20px，左边框4px，背景色#0A0A0A，字体28px加粗
 
 **内容组织结构**：
 1. 页面头部：股票代码、公司名称、分析日期
@@ -522,12 +539,33 @@ class ReportGenerator:
 4. 决策详情：最终决策的理由和依据
 5. 免责声明：位于页面底部，使用较小的字体
 
-**排版和可读性**：
-- 使用清晰的标题层级（h1, h2, h3）
-- 段落之间有适当的间距（建议 1.5em 行高）
-- 使用项目符号和编号列表提高可读性
-- 重要数据和结论使用加粗或颜色强调
-- 保持足够的留白，避免内容过于密集
+**排版和可读性（手机固定尺寸）**：
+- **字体大小规范**（使用固定像素值）：
+  * 正文：18px（最小可读尺寸）
+  * H1标题：32px（页面主标题）
+  * H2标题：26px（章节标题）
+  * H3标题：22px（小节标题）
+  * 小字/注释：14px（免责声明等）
+- **行高和间距**（固定像素值）：
+  * 正文的行高：32px（1.78倍，提高可读性）
+  * 段落间距：24px
+  * 标题上下边距：20px
+  * 列表项间距：16px
+- **内容区域布局**：
+  * body内容宽度：343px（375px - 左右各16px）
+  * 内容左padding：16px
+  * 内容右padding：16px
+  * 文字对齐：左对齐
+- **卡片和容器**：
+  * 决策卡片padding：20px
+  * 其他内容区块padding：16px
+  * 卡片间距：20px
+- **viewport设置**：固定viewport，width=375, initial-scale=1.0
+- **可读性优化**：
+  * 重要数据使用卡片或框线突出显示
+  * 使用项目符号和编号列表提高可读性
+  * 保持足够的留白，避免内容过于密集
+  * 确保文字对比度高，易于阅读
 
 **视觉一致性**：
 - 所有章节使用统一的间距和对齐方式
@@ -544,7 +582,8 @@ class ReportGenerator:
 - 确保 HTML 语法正确（所有标签闭合、嵌套正确）
 - 确保 CSS 语法正确（括号闭合、分号结束）
 - 在 <head> 中设置 charset="utf-8"
-- 在 <head> 中设置 viewport meta 标签以支持响应式设计
+- 在 <head> 中设置 viewport meta 标签：width=375, initial-scale=1.0（固定手机尺寸）
+- 在 <head> 中设置页面样式：body宽度固定375px，overflow-x隐藏
 """
 
         # 添加错误反馈部分
@@ -766,71 +805,124 @@ class ReportGenerator:
         }
         decision_zh = decision_map.get(decision.upper(), decision)
         
-        # 生成基础 HTML
+        # 生成基础 HTML（手机适配版本）
+        # 决策颜色映射
+        decision_colors = {
+            "BUY": "#4AF6C3",  # 青绿色
+            "SELL": "#FF433D",  # 红色
+            "HOLD": "#0068FF"   # 蓝色
+        }
+        decision_color = decision_colors.get(decision.upper(), "#0068FF")
+
         html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=375, initial-scale=1.0">
     <title>{ticker} 交易分析报告</title>
     <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
         body {{
-            font-family: 'Arial', sans-serif;
+            width: 375px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background-color: #000000;
             color: #E9ECF1;
-            margin: 0;
-            padding: 20px;
-            line-height: 1.6;
+            font-size: 18px;
+            line-height: 32px;
+            overflow-x: hidden;
         }}
+
         .container {{
-            max-width: 1200px;
+            width: 343px;
+            padding: 0 16px;
             margin: 0 auto;
-            background-color: #0A0A0A;
-            padding: 30px;
-            border-left: 4px solid #0068FF;
-            border-radius: 5px;
         }}
+
         .header {{
             text-align: center;
-            margin-bottom: 30px;
+            padding: 20px 0;
         }}
+
         .title {{
             color: #E9ECF1;
-            font-size: 2em;
-            margin-bottom: 10px;
+            font-size: 32px;
+            line-height: 40px;
+            margin-bottom: 16px;
+            font-weight: bold;
         }}
+
         .subtitle {{
             color: #A9B3C1;
-            font-size: 1.1em;
+            font-size: 14px;
+            line-height: 20px;
         }}
+
         .decision {{
             text-align: center;
-            font-size: 1.5em;
+            font-size: 28px;
+            line-height: 36px;
             font-weight: bold;
-            color: #0068FF;
+            color: {decision_color};
             margin: 20px 0;
+            padding: 20px;
+            background-color: #0A0A0A;
+            border-left: 4px solid {decision_color};
+            border-radius: 4px;
         }}
+
         .section {{
             margin: 20px 0;
-            padding: 15px;
+            padding: 16px;
             border-left: 3px solid #1A1A1A;
+            background-color: #0A0A0A;
+            border-radius: 4px;
         }}
+
         .section-title {{
             color: #E9ECF1;
-            font-size: 1.3em;
-            margin-bottom: 10px;
+            font-size: 22px;
+            line-height: 30px;
+            margin-bottom: 16px;
+            font-weight: bold;
         }}
+
         .content {{
             color: #A9B3C1;
-            line-height: 1.8;
+            font-size: 18px;
+            line-height: 32px;
         }}
+
+        .content p {{
+            margin: 0 0 24px 0;
+        }}
+
+        .content ul {{
+            margin: 0 0 24px 0;
+            padding-left: 20px;
+        }}
+
+        .content li {{
+            margin: 8px 0;
+        }}
+
         .footer {{
             margin-top: 40px;
             padding: 20px;
             border-top: 1px solid #1A1A1A;
-            font-size: 0.9em;
+            font-size: 14px;
+            line-height: 24px;
             color: #A9B3C1;
             text-align: center;
+        }}
+
+        .footer h3 {{
+            font-size: 18px;
+            margin-bottom: 16px;
         }}
     </style>
 </head>
@@ -840,11 +932,11 @@ class ReportGenerator:
             <h1 class="title">{ticker} 交易分析报告</h1>
             <p class="subtitle">分析日期: {trade_date} | 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </div>
-        
+
         <div class="decision">
             最终决策: {decision_zh}
         </div>
-        
+
         <div class="section">
             <h2 class="section-title">📊 分析摘要</h2>
             <div class="content">
@@ -857,7 +949,7 @@ class ReportGenerator:
                 </ul>
             </div>
         </div>
-        
+
         <div class="section">
             <h2 class="section-title">📋 报告状态</h2>
             <div class="content">
