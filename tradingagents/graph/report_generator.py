@@ -6,31 +6,35 @@ TradingAgents 结果翻译和格式化工具
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 import html5lib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tradingagents.llm_clients.factory import create_llm_client
 
 
 class ReportGenerator:
     """生成结构化的交易分析报告"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], html_llm_model: Optional[str] = None):
         """
         初始化报告生成器
 
         Args:
             config: 配置字典,包含LLM提供商设置
+            html_llm_model: 可选，HTML生成专用模型。如果指定，将使用该模型生成HTML，
+                          而不是使用默认的翻译模型。这对于使用更强大的模型生成复杂HTML很有用。
+                          例如：html_llm_model="glm-4-plus" 而默认使用 "glm-4-flash"
         """
         self.config = config
         self.translator = None
+        self.html_generator = None
+        self.html_llm_model = html_llm_model
 
         provider = config.get("llm_provider")
         if provider:
             try:
-                # 获取模型名称
+                # 1. 创建翻译器（用于文本翻译）
                 model = config.get("quick_think_llm", config.get("deep_think_llm"))
-
-                # 创建LLM客户端
                 self.translator = create_llm_client(
                     provider=provider,
                     model=model
@@ -41,6 +45,23 @@ class ReportGenerator:
                     print(f"✅ 翻译器初始化成功 ({provider}/{model})")
                 else:
                     print(f"⚠️ 警告: 翻译器初始化失败 - 翻译功能将不可用")
+
+                # 2. 创建HTML生成器（如果指定了专用模型）
+                if html_llm_model:
+                    try:
+                        self.html_generator = create_llm_client(
+                            provider=provider,
+                            model=html_llm_model
+                        )
+                        print(f"✅ HTML生成器初始化成功 ({provider}/{html_llm_model})")
+                        print(f"   💡 HTML生成将使用专用模型: {html_llm_model}")
+                    except Exception as e:
+                        print(f"⚠️ 警告: HTML生成器初始化失败: {e}")
+                        print(f"   将回退到使用翻译器模型: {model}")
+                        self.html_generator = None
+                else:
+                    print(f"   📝 HTML生成将使用翻译器模型: {model}")
+
             except Exception as e:
                 print(f"⚠️ 警告: 无法初始化翻译器: {e}")
                 print("   将跳过翻译功能,直接生成英文报告")
@@ -107,7 +128,7 @@ class ReportGenerator:
             elif "400" in error_msg or "prompt" in error_msg:
                 print(f"   原因: 内容格式问题")
                 return f"[翻译失败-格式问题] {text}"
-            elif "401" in error_msg or "auth" in error_msg:
+            elif "401" in error_msg or "auth" in error_msg: hello, 昊宇，你好，现在是用qnn2.33量化以后能正常转出qnn模型（需要把输入prompt_mask的类型从bool变成float32能正常转出qnn, 用unit8也会报错），然后使用mage-nn-run推理报错：打印的prompt_mask输入的type是invalid,
                 print(f"   原因: API认证失败")
                 return f"[翻译失败-认证问题] {text}"
             else:
@@ -123,6 +144,110 @@ class ReportGenerator:
             if '\u4e00' <= char <= '\u9fff':
                 return True
         return False
+
+    def _translate_single_text(self, text: str, section_name: str) -> Tuple[str, str]:
+        """
+        翻译单个文本部分（用于并行处理）
+
+        Args:
+            text: 待翻译的文本
+            section_name: 部分名称（用于日志）
+
+        Returns:
+            元组 (section_name, 翻译后的文本)
+        """
+        if not text or len(text.strip()) < 10:
+            return section_name, text
+
+        # 检查是否已经包含中文字符
+        if self._contains_chinese(text):
+            print(f"✓ {section_name}: 已是中文，跳过翻译")
+            return section_name, text
+
+        try:
+            translated = self.translate_to_chinese(text)
+            print(f"✓ {section_name}: 翻译完成")
+            return section_name, translated
+        except Exception as e:
+            print(f"✗ {section_name}: 翻译失败 - {str(e)}")
+            return section_name, text
+
+    def _translate_reports_parallel(
+        self,
+        reports: Dict[str, str],
+        max_workers: int = 5
+    ) -> Dict[str, str]:
+        """
+        并行翻译多个报告部分
+
+        Args:
+            reports: 待翻译的报告字典 {section_name: content}
+            max_workers: 最大并行工作线程数（默认5，避免API限流）
+
+        Returns:
+            翻译后的报告字典 {section_name: translated_content}
+        """
+        if not self.translator:
+            print("❌ 翻译器未初始化 - 返回原始内容")
+            return reports
+
+        # 过滤出需要翻译的部分
+        sections_to_translate = {
+            name: content
+            for name, content in reports.items()
+            if content and not self._contains_chinese(content)
+        }
+
+        if not sections_to_translate:
+            print("✓ 所有内容已是中文，无需翻译")
+            return reports
+
+        print(f"\n🔄 开始并行翻译 {len(sections_to_translate)} 个报告部分...")
+        print(f"   并行工作线程数: {max_workers}\n")
+
+        translated_results = {}
+        failed_translations = {}
+
+        # 使用线程池并行翻译
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有翻译任务
+            future_to_section = {
+                executor.submit(
+                    self._translate_single_text,
+                    content,
+                    name
+                ): name
+                for name, content in sections_to_translate.items()
+            }
+
+            # 收集结果
+            for future in as_completed(future_to_section):
+                section_name = future_to_section[future]
+                try:
+                    _, translated_text = future.result()
+                    translated_results[section_name] = translated_text
+                except Exception as e:
+                    print(f"✗ {section_name}: 并行翻译异常 - {str(e)}")
+                    failed_translations[section_name] = sections_to_translate[section_name]
+
+        # 合并结果：翻译成功的 + 翻译失败的（使用原文）+ 已经是中文的
+        final_results = {}
+        for name, content in reports.items():
+            if name in translated_results:
+                final_results[name] = translated_results[name]
+            elif name in failed_translations:
+                final_results[name] = failed_translations[name]
+            else:
+                # 已经是中文或不需要翻译的
+                final_results[name] = content
+
+        print(f"\n✅ 翻译完成: 成功 {len(translated_results)}/{len(sections_to_translate)} 个部分")
+        if failed_translations:
+            print(f"⚠️  翻译失败: {len(failed_translations)} 个部分使用原文\n")
+        else:
+            print()
+
+        return final_results
 
     def generate_markdown_report(
         self,
@@ -181,82 +306,33 @@ class ReportGenerator:
             "risk": "⚠️ 风险评估"
         }
 
+        # 并行翻译所有报告部分
+        if translate:
+            print("\n" + "="*60)
+            print("📊 开始生成报告（并行翻译模式）")
+            print("="*60 + "\n")
+            reports = self._translate_reports_parallel(reports, max_workers=5)
+
         # 添加各个分析部分
         if translate:
             report_lines.append("## 📋 分析摘要\n")
             report_lines.append(self._generate_summary_zh(decision_zh, reports))
             report_lines.append("\n---\n")
 
-        # 市场分析
-        if reports.get("market"):
-            report_lines.append(f"## {section_titles['market']}\n")
-            content = reports["market"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
+        # 定义报告部分的顺序
+        section_order = ["market", "fundamentals", "news", "sentiment", "debate", "trader", "risk"]
 
-        # 基本面分析
-        if reports.get("fundamentals"):
-            report_lines.append(f"## {section_titles['fundamentals']}\n")
-            content = reports["fundamentals"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
-
-        # 新闻分析
-        if reports.get("news"):
-            report_lines.append(f"## {section_titles['news']}\n")
-            content = reports["news"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
-
-        # 情绪分析
-        if reports.get("sentiment"):
-            report_lines.append(f"## {section_titles['sentiment']}\n")
-            content = reports["sentiment"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
-
-        # 投资辩论
-        if reports.get("debate"):
-            report_lines.append(f"## {section_titles['debate']}\n")
-            content = reports["debate"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
-
-        # 交易员分析
-        if reports.get("trader"):
-            report_lines.append(f"## {section_titles['trader']}\n")
-            content = reports["trader"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
-
-        # 风险评估
-        if reports.get("risk"):
-            report_lines.append(f"## {section_titles['risk']}\n")
-            content = reports["risk"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
-            report_lines.append("---\n")
+        # 按顺序添加各个部分
+        for section in section_order:
+            if reports.get(section):
+                report_lines.append(f"## {section_titles[section]}\n")
+                report_lines.append(reports[section] + "\n")
+                report_lines.append("---\n")
 
         # 最终决策详情
         report_lines.append("## 📝 决策详情\n")
         if reports.get("final_decision"):
-            content = reports["final_decision"]
-            if translate:
-                content = self.translate_to_chinese(content)
-            report_lines.append(content + "\n")
+            report_lines.append(reports["final_decision"] + "\n")
 
         # 免责声明
         report_lines.append("\n---\n")
@@ -509,7 +585,7 @@ class ReportGenerator:
         """
         调用 LLM 生成 HTML 报告
 
-        重用现有的 translator LLM 客户端来生成 HTML 内容。
+        使用专门的 HTML 生成器或翻译器 LLM 客户端来生成 HTML 内容。
         使用专门针对 HTML 生成优化的系统提示词。
 
         Args:
@@ -519,13 +595,16 @@ class ReportGenerator:
             LLM 生成的 HTML 字符串
 
         Raises:
-            RuntimeError: 如果 translator 未初始化
+            RuntimeError: 如果没有可用的 LLM 客户端
         """
-        if not self.translator:
+        # 优先使用专门的HTML生成器，如果没有则使用翻译器
+        llm_client = self.html_generator if self.html_generator else self.translator
+
+        if not llm_client:
             raise RuntimeError("Translation not initialized - cannot generate HTML")
 
         # 获取 LLM 客户端
-        llm = self.translator.get_llm()
+        llm = llm_client.get_llm()
 
         # 导入消息类型
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -540,7 +619,20 @@ class ReportGenerator:
 
         # 调用 LLM 并返回结果
         result = llm.invoke(messages)
-        return result.content
+
+        # 清理可能存在的markdown代码块标记
+        html_content = result.content.strip()
+
+        # 移除markdown代码块标记（如果存在）
+        if html_content.startswith("```html"):
+            html_content = html_content[7:]  # 移除```html
+        elif html_content.startswith("```"):
+            html_content = html_content[3:]  # 移除```
+
+        if html_content.endswith("```"):
+            html_content = html_content[:-3]  # 移除结尾的```
+
+        return html_content.strip()
 
     def generate_html_report_with_llm(
         self,
@@ -592,9 +684,9 @@ class ReportGenerator:
                 
                 # 调用 LLM
                 print("🤖 正在调用 LLM 生成 HTML...")
-                html = self._call_llm_for_html(prompt)
+                current_html = self._call_llm_for_html(prompt)
                 print("✅ LLM 调用完成")
-                
+
                 # 验证 HTML
                 print("🔍 正在验证 HTML 格式...")
                 if current_html is None:

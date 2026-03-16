@@ -85,7 +85,7 @@ def main():
             print("\n📝 正在生成报告...")
             print("-"*60)
 
-            generator = ReportGenerator(config)
+            generator = ReportGenerator(config , html_llm_model="glm-4.7")
             markdown_report = generator.generate_markdown_report(
                 state,
                 decision,
