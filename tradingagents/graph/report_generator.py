@@ -7,6 +7,7 @@ TradingAgents 结果翻译和格式化工具
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
+import html5lib
 from tradingagents.llm_clients.factory import create_llm_client
 
 
@@ -466,3 +467,25 @@ class ReportGenerator:
 """
 
         return prompt
+
+    def _validate_html(self, html: str) -> tuple[bool, list[str]]:
+        """
+        验证 HTML 语法是否正确
+
+        使用 html5lib 的严格模式验证 HTML，检测语法错误和标签嵌套问题。
+        用于 LLM 生成 HTML 后的验证，如果验证失败则提供错误信息用于重试。
+
+        Args:
+            html: 待验证的 HTML 字符串
+
+        Returns:
+            元组 (is_valid, error_messages):
+                - is_valid: HTML 是否有效
+                - error_messages: 错误消息列表，验证成功时为空列表
+        """
+        try:
+            parser = html5lib.HTMLParser(strict=True)
+            parser.parse(html)
+            return True, []
+        except Exception as e:
+            return False, [str(e)]
