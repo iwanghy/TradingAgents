@@ -489,3 +489,40 @@ class ReportGenerator:
             return True, []
         except Exception as e:
             return False, [str(e)]
+
+    def _call_llm_for_html(self, prompt: str) -> str:
+        """
+        调用 LLM 生成 HTML 报告
+
+        重用现有的 translator LLM 客户端来生成 HTML 内容。
+        使用专门针对 HTML 生成优化的系统提示词。
+
+        Args:
+            prompt: HTML 生成的完整提示词
+
+        Returns:
+            LLM 生成的 HTML 字符串
+
+        Raises:
+            RuntimeError: 如果 translator 未初始化
+        """
+        if not self.translator:
+            raise RuntimeError("Translation not initialized - cannot generate HTML")
+
+        # 获取 LLM 客户端
+        llm = self.translator.get_llm()
+
+        # 导入消息类型
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        # 构建消息列表
+        messages = [
+            SystemMessage(
+                content="你是一个专业的金融报告设计师，擅长生成高质量的 HTML 报告。"
+            ),
+            HumanMessage(content=prompt)
+        ]
+
+        # 调用 LLM 并返回结果
+        result = llm.invoke(messages)
+        return result.content
