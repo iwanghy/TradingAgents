@@ -360,6 +360,21 @@ class ReportGenerator:
 
         print(f"✅ 报告已保存: {report_path}")
 
+    def save_html_report(self, html_content: str, filepath: str) -> None:
+        """保存 HTML 报告到文件
+
+        Args:
+            html_content: HTML 报告内容
+            filepath: 保存路径
+        """
+        report_path = Path(filepath)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ HTML 报告已保存: {report_path}")
+
     def _build_html_prompt(
         self,
         markdown: str,
@@ -526,3 +541,248 @@ class ReportGenerator:
         # 调用 LLM 并返回结果
         result = llm.invoke(messages)
         return result.content
+
+    def generate_html_report_with_llm(
+        self,
+        state: Dict[str, Any],
+        decision: str,
+        translate: bool = True,
+        max_retries: int = 3
+    ) -> str:
+        """
+        使用 LLM 生成 HTML 报告的主方法
+        
+        集成所有子方法：生成 Markdown、构建提示词、调用 LLM、验证 HTML、实现重试机制
+        
+        Args:
+            state: Agent状态字典,包含所有分析报告
+            decision: 最终交易决策 (BUY/SELL/HOLD)
+            translate: 是否翻译为中文
+            max_retries: 最大重试次数
+            
+        Returns:
+            生成的 HTML 报告字符串
+        """
+        print("🔄 开始生成 HTML 报告...")
+        
+        # 1. 先生成 Markdown 报告
+        print("📄 正在生成 Markdown 报告...")
+        markdown_text = self.generate_markdown_report(state, decision, translate=translate)
+        print(f"✅ Markdown 报告生成完成 (长度: {len(markdown_text)} 字符)")
+        
+        # 2. 尝试生成 HTML（带重试机制）
+        html_result = None
+        last_errors = []
+        last_html = None  # 初始化最后一次尝试的 HTML
+        
+        for attempt in range(max_retries):
+            print(f"🎨 第 {attempt + 1}/{max_retries} 次尝试生成 HTML...")
+            current_html = None  # 当前尝试的 HTML
+            
+            try:
+                # 构建 prompt
+                if attempt == 0:
+                    # 第一次尝试，使用原始 markdown
+                    prompt = self._build_html_prompt(markdown_text)
+                else:
+                    # 后续尝试，添加错误反馈
+                    prompt = self._build_html_prompt(markdown_text, error_feedback=last_errors)
+                
+                print("📝 正在构建 LLM 提示词...")
+                
+                # 调用 LLM
+                print("🤖 正在调用 LLM 生成 HTML...")
+                html = self._call_llm_for_html(prompt)
+                print("✅ LLM 调用完成")
+                
+                # 验证 HTML
+                print("🔍 正在验证 HTML 格式...")
+                if current_html is None:
+                    is_valid, errors = False, ["HTML 生成失败，返回 None"]
+                else:
+                    is_valid, errors = self._validate_html(current_html)
+                
+                if is_valid:
+                    print(f"✅ HTML 生成成功（第 {attempt + 1} 次尝试）")
+                    html_result = current_html
+                    break
+                else:
+                    print(f"⚠️ HTML 验证失败（第 {attempt + 1} 次尝试）")
+                    print(f"   错误详情: {errors}")
+                    last_errors = errors
+                    
+                    # 如果不是最后一次尝试，添加错误反馈并继续重试
+                    if attempt < max_retries - 1:
+                        print("   🔄 将添加错误反馈并重试...")
+                    else:
+                        print("   🚫 已达到最大重试次数")
+                        
+            except Exception as e:
+                error_msg = f"LLM 调用异常: {str(e)}"
+                print(f"❌ {error_msg}")
+                last_errors = [error_msg]
+                
+                # 如果不是最后一次尝试，继续重试
+                if attempt < max_retries - 1:
+                    print("   🔄 将继续重试...")
+                else:
+                    print("   🚫 已达到最大重试次数")
+            
+            # 保存最后一次的 HTML 结果
+            last_html = current_html
+        
+        # 3. 处理最终结果
+        if html_result:
+            print(f"🎉 HTML 报告生成成功！总长度: {len(html_result)} 字符")
+            return html_result
+        else:
+            print(f"❌ HTML 报告生成失败，已尝试 {max_retries} 次")
+            print("   返回最后一次生成结果（可能格式有问题）")
+            
+            # 如果有最后一次的 HTML 结果，返回它
+            if 'last_html' in locals() and last_html is not None:
+                return last_html
+            else:
+                # 如果没有任何有效结果，返回一个基本的 HTML 模板
+                return self._generate_fallback_html(state, decision, translate)
+
+    def _generate_fallback_html(
+        self,
+        state: Dict[str, Any],
+        decision: str,
+        translate: bool = True
+    ) -> str:
+        """
+        生成后备 HTML 报告（当 LLM 生成失败时使用）
+        
+        Args:
+            state: Agent状态字典
+            decision: 交易决策
+            translate: 是否翻译
+            
+        Returns:
+            基本格式的 HTML 报告
+        """
+        ticker = state.get("company_of_interest", "UNKNOWN")
+        trade_date = state.get("trade_date", "UNKNOWN")
+        
+        # 决策映射
+        decision_map = {
+            "BUY": "买入",
+            "SELL": "卖出", 
+            "HOLD": "持有"
+        }
+        decision_zh = decision_map.get(decision.upper(), decision)
+        
+        # 生成基础 HTML
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{ticker} 交易分析报告</title>
+    <style>
+        body {{
+            font-family: 'Arial', sans-serif;
+            background-color: #000000;
+            color: #E9ECF1;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #0A0A0A;
+            padding: 30px;
+            border-left: 4px solid #0068FF;
+            border-radius: 5px;
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        .title {{
+            color: #E9ECF1;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }}
+        .subtitle {{
+            color: #A9B3C1;
+            font-size: 1.1em;
+        }}
+        .decision {{
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #0068FF;
+            margin: 20px 0;
+        }}
+        .section {{
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 3px solid #1A1A1A;
+        }}
+        .section-title {{
+            color: #E9ECF1;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }}
+        .content {{
+            color: #A9B3C1;
+            line-height: 1.8;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding: 20px;
+            border-top: 1px solid #1A1A1A;
+            font-size: 0.9em;
+            color: #A9B3C1;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">{ticker} 交易分析报告</h1>
+            <p class="subtitle">分析日期: {trade_date} | 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        
+        <div class="decision">
+            最终决策: {decision_zh}
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">📊 分析摘要</h2>
+            <div class="content">
+                <p>本报告对市场情况进行了全面分析，结合了基本面、技术面、市场情绪等多维度因素。</p>
+                <p><strong>关键结论</strong>:</p>
+                <ul>
+                    <li>经过多轮分析师讨论和风险评估，最终建议<strong>{decision_zh}</strong></li>
+                    <li>由于 LLM 生成失败，当前显示为后备格式</li>
+                    <li>建议检查 LLM 配置后重新生成完整报告</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">📋 报告状态</h2>
+            <div class="content">
+                <p><strong>状态</strong>: LLM 生成失败，使用后备模板</p>
+                <p><strong>建议</strong>: 检查 API 配置和网络连接后重新生成</p>
+                <p><strong>原始决策</strong>: {decision_zh}</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <h3>⚠️ 免责声明</h3>
+            <p>本报告由AI分析师生成，仅供参考和学习使用，不构成任何投资建议。</p>
+            <p>投资有风险，入市需谨慎。请根据自身风险承受能力做出投资决策。</p>
+            <p>此页面为 LLM 生成失败时的后备显示格式。</p>
+        </div>
+    </div>
+</body>
+</html>"""
+        
+        return html
