@@ -33,6 +33,8 @@ VALID_MODELS = {
         "glm-4-air",
         "glm-4-flash",
         "glm-4-long",
+        # GLM-4.5 series
+        "glm-4.5-air",
         # GLM-4.7 series (最新)
         "glm-4.7-plus",
         "glm-4.7",
