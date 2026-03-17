@@ -55,7 +55,7 @@ def main():
     print(f"  - Markdown导出: {'是' if generate_markdown else '否'}")
 
     # 选择 A 股典型股票
-    ticker = "sh600900"  # 
+    ticker = "sh600340"  # 
     from datetime import datetime, timedelta
     trade_date = datetime.now().strftime('%Y-%m-%d')  # 使用当前日期
 
