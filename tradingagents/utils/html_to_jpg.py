@@ -62,6 +62,23 @@ def segment_html_by_sections(html_content: str) -> List[str]:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title_text}</title>
     {style_str}
+    <style>
+        /* 优化手机阅读：窄图 + 小边距 + 内容自适应 */
+        * {{
+            box-sizing: border-box;
+        }}
+        body {{
+            margin: 0 !important;
+            padding: 6px !important;
+            width: 100% !important;
+        }}
+        .container {{
+            padding: 6px !important;
+            margin: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }}
+    </style>
 </head>
 <body>
     <div class="container">
@@ -218,10 +235,10 @@ def convert(html_path: Path, output_dir: Path, quality: int = 85,
     # 配置 imgkit 选项
     options = {
         'format': 'jpg',
-        'width': 750,
+        'width': 680,  # 适合手机阅读的宽度
         'quality': quality,
         'encoding': 'UTF-8',
-        'enable-local-file-access': ''
+        'enable-local-file-access': '',
     }
 
     # 如果不启用分段，直接转换为单张图片
