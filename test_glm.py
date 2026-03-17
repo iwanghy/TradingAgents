@@ -55,7 +55,7 @@ def main():
     print(f"  - Markdown导出: {'是' if generate_markdown else '否'}")
 
     # 选择 A 股典型股票
-    ticker = "sh600340"  # 
+    ticker = "sh600941"  # 
     from datetime import datetime, timedelta
     trade_date = datetime.now().strftime('%Y-%m-%d')  # 使用当前日期
 
@@ -100,12 +100,12 @@ def main():
 
             print(f"✅ Markdown 报告已保存到: {report_path}")
 
-            # 生成 HTML 报告
             print("\n🌐 正在生成 HTML 报告...")
             html_report = generator.generate_html_report_with_llm(
                 state,
                 decision,
-                translate=translate_to_chinese
+                translate=translate_to_chinese,
+                markdown_text=markdown_report
             )
             html_filename = f"{ticker}_{trade_date}_{'中文' if translate_to_chinese else '英文'}报告.html"
             html_path = f"reports/{html_filename}"

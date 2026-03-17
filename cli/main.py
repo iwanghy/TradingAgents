@@ -1156,22 +1156,27 @@ def run_analysis():
         ).strip()
         save_path = Path(save_path_str)
         try:
-            report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
-            console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
-            console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
-
-            # Generate HTML report
-            console.print("\n🌐 Generating HTML report...")
+            lang_choice = typer.prompt("Report language? (1=English, 2=中文)", default="1").strip()
+            translate_to_chinese = lang_choice == "2"
+            
+            console.print("\n🌐 Generating report...")
             generator = ReportGenerator(config)
+            
             html_report = generator.generate_html_report_with_llm(
                 final_state,
                 decision,
-                translate=False  # CLI default: English
+                translate=translate_to_chinese
             )
-            html_filename = f"{selections['ticker']}_{selections['analysis_date']}_English_Report.html"
+            
+            lang_suffix = "Chinese" if translate_to_chinese else "English"
+            html_filename = f"{selections['ticker']}_{selections['analysis_date']}_{lang_suffix}_Report.html"
             html_path = save_path / html_filename
             generator.save_html_report(html_report, str(html_path))
             console.print(f"[green]✓ HTML report saved to:[/green] {html_path.resolve()}")
+            
+            report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
+            console.print(f"[green]✓ Raw reports saved to:[/green] {save_path.resolve()}")
+            console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
         except Exception as e:
             console.print(f"[red]Error saving report: {e}[/red]")
 

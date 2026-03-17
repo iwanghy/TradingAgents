@@ -23,10 +23,10 @@ DEFAULT_CONFIG = {
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
-        "core_stock_apis": "sina_finance",     # 优先使用新浪财经（避开 yfinance 速率限制）
-        "technical_indicators": "yfinance",  # 技术指标仍用 yfinance
-        "fundamental_data": "sina_finance",   # A股基本面数据使用新浪财经
-        "news_data": "akshare",  # 改用 AKShare（中文财经新闻，无yfinance限流问题）
+        "core_stock_apis": "sina_finance",
+        "technical_indicators": "yfinance",
+        "fundamental_data": "sina_finance",
+        "news_data": "akshare",
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {

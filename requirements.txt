@@ -20,4 +20,5 @@ typer
 questionary
 langchain_anthropic
 langchain-google-genai
+baostock
 html5lib>=1.1

@@ -11,6 +11,12 @@ import time
 from datetime import datetime
 from typing import Annotated, Optional
 
+try:
+    import baostock as bs
+    BAOSTOCK_AVAILABLE = True
+except ImportError:
+    BAOSTOCK_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # 新浪财经 API 配置
@@ -175,6 +181,150 @@ def convert_symbol_to_sina_format(symbol: str) -> str:
     return symbol
 
 
+def _get_baostock_financial_data(
+    ticker: str,
+    data_type: str,
+    freq: str = "quarterly"
+) -> Optional[str]:
+    """
+    使用 baostock 获取真实财务数据
+    
+    Args:
+        ticker: 股票代码（如 sh600519 或 sz000001）
+        data_type: 数据类型 ('profit', 'balance', 'cash_flow', 'growth', 'operation')
+        freq: 报告频率（暂只支持 quarterly）
+    
+    Returns:
+        Optional[str]: Markdown 格式的财务表格，失败返回 None
+    """
+    if not BAOSTOCK_AVAILABLE:
+        logger.warning(f"[BAOSTOCK] baostock not available, skipping financial data fetch")
+        return None
+    
+    # 支持的数据类型映射到 baostock API
+    api_map = {
+        'profit': bs.query_profit_data,
+        'balance': bs.query_balance_data,
+        'cash_flow': bs.query_cash_flow_data,
+        'growth': bs.query_growth_data,
+        'operation': bs.query_operation_data,
+    }
+    
+    if data_type not in api_map:
+        logger.error(f"[BAOSTOCK] Unsupported data_type: {data_type}")
+        return None
+    
+    query_func = api_map[data_type]
+    
+    try:
+        # 登录 baostock
+        lg = bs.login()
+        if lg.error_code != '0':
+            logger.error(f"[BAOSTOCK] Login failed: {lg.error_msg}")
+            return None
+        
+        # 转换股票代码格式：sh600519 -> sh.600519
+        symbol = ticker.lower()
+        if symbol.startswith('sh') or symbol.startswith('sz'):
+            baostock_code = f"{symbol[:2]}.{symbol[2:]}"
+        else:
+            logger.error(f"[BAOSTOCK] Invalid ticker format: {ticker}")
+            bs.logout()
+            return None
+        
+        # 获取最近 4 个季度的数据
+        # 如果当前年 Q3 没有数据，使用上一年
+        from datetime import datetime
+        current_year = datetime.now().year
+        
+        # 先尝试当前年 Q3，如果无数据则使用上一年
+        test_rs = query_func(code=baostock_code, year=current_year, quarter=3)
+        has_current_year_data = False
+        while (test_rs.error_code == '0') & test_rs.next():
+            has_current_year_data = True
+            break
+        
+        if has_current_year_data:
+            quarters = [
+                (current_year, 3),
+                (current_year, 2),
+                (current_year, 1),
+                (current_year - 1, 4),
+            ]
+        else:
+            # 当前年无数据，使用上一年
+            quarters = [
+                (current_year - 1, 4),
+                (current_year - 1, 3),
+                (current_year - 1, 2),
+                (current_year - 1, 1),
+            ]
+        
+        # 收集数据
+        all_data = []
+        for year, quarter in quarters:
+            rs = query_func(code=baostock_code, year=year, quarter=quarter)
+            if rs.error_code != '0':
+                logger.warning(f"[BAOSTOCK] Query failed for {year}-Q{quarter}: {rs.error_msg}")
+                continue
+            
+            # 获取第一行数据
+            while (rs.next()):
+                row_data = rs.get_row_data()
+                all_data.append({
+                    'period': f"{year}Q{quarter}",
+                    'data': row_data
+                })
+                break  # 只取第一行
+        
+        # 登出
+        bs.logout()
+        
+        if not all_data:
+            logger.warning(f"[BAOSTOCK] No data found for {ticker} ({data_type})")
+            return None
+        
+        # 构建 Markdown 表格
+        fields = rs.fields  # 列名
+        
+        # 表头
+        header_row = "| 项目 | " + " | ".join([item['period'] for item in all_data]) + " |"
+        separator_row = "|" + "|".join(["------" for _ in range(len(all_data) + 1)]) + "|"
+        
+        # 数据行
+        data_rows = []
+        for i, field in enumerate(fields):
+            row_cells = [field]
+            for item in all_data:
+                row_cells.append(item['data'][i])
+            data_rows.append("| " + " | ".join(row_cells) + " |")
+        
+        markdown_table = "\n".join([header_row, separator_row] + data_rows)
+        
+        # 添加标题
+        data_type_map = {
+            'profit': '利润表',
+            'balance': '资产负债表',
+            'cash_flow': '现金流量表',
+            'growth': '成长能力指标',
+            'operation': '营运能力指标',
+        }
+        
+        title = f"# {ticker.upper()} {data_type_map.get(data_type, data_type)}（来自 baostock）\n\n"
+        result = title + markdown_table
+        
+        logger.info(f"[BAOSTOCK_SUCCESS] {ticker} | {data_type} | records={len(all_data)}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"[BAOSTOCK_ERROR] {ticker} | {data_type} | error={str(e)}")
+        try:
+            bs.logout()
+        except:
+            pass
+        return None
+
+
 def get_sina_fundamentals(
     ticker: Annotated[str, "股票代码（如 sh600519 或 sz000001）"],
     curr_date: Optional[str] = None
@@ -182,11 +332,7 @@ def get_sina_fundamentals(
     """
     获取公司基本面信息和财务摘要
 
-    TODO: 当前返回模拟数据，需要实现真实数据获取
-    推荐使用以下库之一：
-    - akshare: ak.stock_individual_info_em(symbol) - 完整的公司信息
-    - tushare: ts.stock_basic(ts_code=...) - 基本信息
-    - 新浪财经HTML解析: http://money.finance.sina.com.cn/corp/go.php/vFD_CompanyInfo/stockid/600519/displaytype/4.phtml
+    使用baostock获取真实数据，如果不可用则返回错误提示
 
     Args:
         ticker: 股票代码
@@ -199,85 +345,22 @@ def get_sina_fundamentals(
 
     try:
         symbol = convert_symbol_to_sina_format(ticker)
-        code = symbol.replace("sh", "").replace("sz", "")
 
-        # 根据代码推断公司信息（模拟数据）
-        # 实际应用中应该从API获取
-        company_name_map = {
-            "600519": "贵州茅台",
-            "000001": "平安银行",
-            "000002": "万科A",
-            "600036": "招商银行",
-            "601318": "中国平安"
-        }
+        # Try baostock first for profit data
+        result = _get_baostock_financial_data(symbol, 'profit', freq='quarterly')
+        if result:
+            logger.info(f"[API_SUCCESS] sina_fundamentals | {symbol} | from baostock")
+            return result
 
-        company_name = company_name_map.get(code, f"未知公司（代码：{code}）")
-
-        # 构建Markdown格式的基本面信息
-        result = f"""# {company_name}（{symbol.upper()}）基本面信息
-
-## 公司基本信息
-
-| 项目 | 内容 |
-|------|------|
-| 股票代码 | {symbol.upper()} |
-| 公司名称 | {company_name} |
-| 所属市场 | {'上海证券交易所' if symbol.startswith('sh') else '深圳证券交易所'} |
-| 数据日期 | {curr_date or '2024-01-01'} |
-
-*注：以上为示例数据，需从真实API获取*
-
-## 关键财务指标（示例）
-
-| 指标 | 数值 | 单位 |
-|------|------|------|
-| 总市值 | 2,500,000 | 百万元 |
-| 流通市值 | 2,500,000 | 百万元 |
-| 市盈率（PE） | 35.5 | - |
-| 市净率（PB） | 12.8 | - |
-| 净资产收益率（ROE） | 28.5% | - |
-| 总资产收益率（ROA） | 22.3% | - |
-
-*数据来源：新浪财经（示例数据，需完善）*
-
-## 主营业务
-
-- 主要业务：白酒生产与销售
-- 行业分类：食品饮料 - 白酒
-- 主营产品：茅台酒及系列酒
-
-*注：以上为示例数据，需要实现真实的HTML解析或使用专业库*
-
-## TODO: 实现真实数据获取
-
-```python
-# 推荐方案1：使用 akshare
-import akshare as ak
-def get_fundamentals_real(symbol):
-    code = symbol.replace('sh', '').replace('sz', '')
-    data = ak.stock_individual_info_em(symbol=code)
-    return data.to_markdown()
-
-# 推荐方案2：使用 tushare
-import tushare as ts
-def get_fundamentals_real(symbol):
-    ts.set_token('your_token')
-    pro = ts.pro_api()
-    data = pro.stock_basic(ts_code=symbol.upper())
-    return data
-
-# 推荐方案3：新浪财经HTML解析（复杂）
-# URL: http://money.finance.sina.com.cn/corp/go.php/vFD_CompanyInfo/stockid/{code}/displaytype/4.phtml
-# 需要解析HTML表格结构
-```
-
----
-*数据来源：新浪财经*
-*生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-"""
-
-        logger.info(f"[API_SUCCESS] sina_fundamentals | {symbol}")
-        return result
+        logger.warning(f"[API_UNAVAILABLE] sina_fundamentals | {symbol} | no data available")
+        return (
+            f"⚠️ 无法获取 {ticker} 的基本面数据\n"
+            f"   原因：数据源暂无该股票的财务数据\n"
+            f"   建议：\n"
+            f"   - 确认股票代码是否正确\n"
+            f"   - 尝试使用其他数据源（如 akshare_fundamentals）\n"
+            f"   - 检查该股票是否已上市"
+        )
 
     except Exception as e:
         logger.error(f"[API_ERROR] sina_fundamentals | {ticker} | error={str(e)}")
@@ -292,11 +375,7 @@ def get_sina_balance_sheet(
     """
     获取资产负债表数据
 
-    TODO: 当前返回模拟数据，需要实现真实数据获取
-    推荐使用以下库之一：
-    - akshare: ak.stock_balance_sheet_by_yearly_em() / ak.stock_balance_sheet_by_quarterly_em()
-    - tushare: pro.balancesheet(ts_code=...)
-    - 新浪财经HTML解析: http://money.finance.sina.com.cn/corp/go.php/vFD_BalanceSheet/stockid/600519/displaytype/4.phtml
+    使用baostock获取真实数据，如果不可用则返回错误提示
 
     Args:
         ticker: 股票代码
@@ -304,79 +383,29 @@ def get_sina_balance_sheet(
         curr_date: 当前日期（可选）
 
     Returns:
-        str: Markdown格式的资产负债表
+        str: Markdown格式的资产负债表或错误提示
     """
     logger.info(f"[API_CALL] sina_balance_sheet | symbol={ticker} | freq={freq}")
 
     try:
         symbol = convert_symbol_to_sina_format(ticker)
-        code = symbol.replace("sh", "").replace("sz", "")
 
-        # 构建模拟的资产负债表数据
-        result = f"""# {symbol.upper()} 资产负债表
+        # Try baostock first for balance data
+        result = _get_baostock_financial_data(symbol, 'balance', freq=freq)
+        if result:
+            logger.info(f"[API_SUCCESS] sina_balance_sheet | {symbol} | from baostock")
+            return result
 
-## 报告频率: {freq}
-
-| 项目 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| **资产** | | | | |
-| 流动资产合计 | 185,230 | 178,450 | 172,890 | 168,500 |
-| 货币资金 | 58,900 | 55,200 | 52,100 | 49,800 |
-| 应收账款 | 1,250 | 1,180 | 1,120 | 1,050 |
-| 存货 | 42,300 | 40,500 | 38,900 | 37,200 |
-| 非流动资产合计 | 25,800 | 24,900 | 24,100 | 23,500 |
-| 总资产 | 211,030 | 203,350 | 196,990 | 192,000 |
-| **负债和股东权益** | | | | |
-| 流动负债合计 | 45,600 | 42,300 | 39,800 | 37,500 |
-| 非流动负债合计 | 2,100 | 1,980 | 1,850 | 1,700 |
-| 总负债 | 47,700 | 44,280 | 41,650 | 39,200 |
-| 股东权益合计 | 163,330 | 159,070 | 155,340 | 152,800 |
-| 负债和股东权益总计 | 211,030 | 203,350 | 196,990 | 192,000 |
-
-*单位：百万元*
-
-## 关键财务比率（计算得出）
-
-| 指标 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| 资产负债率 | 22.6% | 21.8% | 21.1% | 20.4% |
-| 流动比率 | 4.06 | 4.22 | 4.34 | 4.49 |
-| 速动比率 | 3.14 | 3.26 | 3.36 | 3.47 |
-
-## TODO: 实现真实数据获取
-
-```python
-# 推荐方案1：使用 akshare（最简单）
-import akshare as ak
-
-def get_balance_sheet_real(symbol, freq='quarterly'):
-    code = symbol.replace('sh', '').replace('sz', '')
-    if freq == 'quarterly':
-        df = ak.stock_balance_sheet_by_quarterly_em(symbol=code)
-    else:
-        df = ak.stock_balance_sheet_by_yearly_em(symbol=code)
-    return df.to_markdown()
-
-# 推荐方案2：使用 tushare
-import tushare as ts
-
-def get_balance_sheet_real(symbol, freq='quarterly'):
-    pro = ts.pro_api('your_token')
-    # freq='Q' 季度, 'A' 年度
-    df = pro.balancesheet(ts_code=symbol.upper(), period='2024Q3')
-    return df
-
-# 推荐方案3：新浪财经HTML解析
-# 需要解析多个表格，较复杂
-```
-
----
-*数据来源：新浪财经（示例数据，需完善）*
-*生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-"""
-
-        logger.info(f"[API_SUCCESS] sina_balance_sheet | {symbol} | freq={freq}")
-        return result
+        logger.warning(f"[API_UNAVAILABLE] sina_balance_sheet | {symbol} | no data available")
+        return (
+            f"⚠️ 无法获取 {ticker} 的资产负债表数据\n"
+            f"   原因：数据源暂无该股票的财务数据\n"
+            f"   报告频率：{freq}\n"
+            f"   建议：\n"
+            f"   - 确认股票代码是否正确\n"
+            f"   - 尝试使用其他数据源（如 akshare_fundamentals）\n"
+            f"   - 检查该股票是否已上市"
+        )
 
     except Exception as e:
         logger.error(f"[API_ERROR] sina_balance_sheet | {ticker} | error={str(e)}")
@@ -391,11 +420,7 @@ def get_sina_income_statement(
     """
     获取利润表数据
 
-    TODO: 当前返回模拟数据，需要实现真实数据获取
-    推荐使用以下库之一：
-    - akshare: ak.stock_profit_sheet_by_yearly_em() / ak.stock_profit_sheet_by_quarterly_em()
-    - tushare: pro.income(ts_code=...)
-    - 新浪财经HTML解析: http://money.finance.sina.com.cn/corp/go.php/vFD_ProfitSheet/stockid/600519/displaytype/4.phtml
+    使用baostock获取真实数据，如果不可用则返回错误提示
 
     Args:
         ticker: 股票代码
@@ -403,75 +428,29 @@ def get_sina_income_statement(
         curr_date: 当前日期（可选）
 
     Returns:
-        str: Markdown格式的利润表
+        str: Markdown格式的利润表或错误提示
     """
     logger.info(f"[API_CALL] sina_income_statement | symbol={ticker} | freq={freq}")
 
     try:
         symbol = convert_symbol_to_sina_format(ticker)
-        code = symbol.replace("sh", "").replace("sz", "")
 
-        # 构建模拟的利润表数据
-        result = f"""# {symbol.upper()} 利润表
+        # Try baostock first for profit data
+        result = _get_baostock_financial_data(symbol, 'profit', freq=freq)
+        if result:
+            logger.info(f"[API_SUCCESS] sina_income_statement | {symbol} | from baostock")
+            return result
 
-## 报告频率: {freq}
-
-| 项目 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| **营业收入** | 32,500 | 30,800 | 29,200 | 27,500 |
-| 营业成本 | 8,900 | 8,400 | 7,900 | 7,500 |
-| 毛利润 | 23,600 | 22,400 | 21,300 | 20,000 |
-| **利润总额** | | | | |
-| 营业利润 | 18,200 | 17,300 | 16,400 | 15,500 |
-| 利润总额 | 18,500 | 17,600 | 16,700 | 15,800 |
-| 净利润 | 14,800 | 14,100 | 13,400 | 12,700 |
-| **每股指标** | | | | |
-| 基本每股收益 | 11.75 | 11.20 | 10.65 | 10.10 |
-| 稀释每股收益 | 11.75 | 11.20 | 10.65 | 10.10 |
-
-*单位：百万元（每股收益除外）*
-
-## 盈利能力指标
-
-| 指标 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| 毛利率 | 72.6% | 72.7% | 72.9% | 72.7% |
-| 净利率 | 45.5% | 45.8% | 45.9% | 46.2% |
-| 营收增长率 | 18.2% | 12.0% | 6.2% | 19.8% |
-
-## TODO: 实现真实数据获取
-
-```python
-# 推荐方案1：使用 akshare（最简单）
-import akshare as ak
-
-def get_income_statement_real(symbol, freq='quarterly'):
-    code = symbol.replace('sh', '').replace('sz', '')
-    if freq == 'quarterly':
-        df = ak.stock_profit_sheet_by_quarterly_em(symbol=code)
-    else:
-        df = ak.stock_profit_sheet_by_yearly_em(symbol=code)
-    return df.to_markdown()
-
-# 推荐方案2：使用 tushare
-import tushare as ts
-
-def get_income_statement_real(symbol, freq='quarterly'):
-    pro = ts.pro_api('your_token')
-    df = pro.income(ts_code=symbol.upper(), period='2024Q3')
-    return df
-
-# 推荐方案3：新浪财经HTML解析
-# URL格式: http://money.finance.sina.com.cn/corp/go.php/vFD_ProfitSheet/stockid/{code}/displaytype/4.phtml
-```
-
----
-*数据来源：新浪财经（示例数据，需完善）*
-*生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-"""
-
-        logger.info(f"[API_SUCCESS] sina_income_statement | {symbol} | freq={freq}")
-        return result
+        logger.warning(f"[API_UNAVAILABLE] sina_income_statement | {symbol} | no data available")
+        return (
+            f"⚠️ 无法获取 {ticker} 的利润表数据\n"
+            f"   原因：数据源暂无该股票的财务数据\n"
+            f"   报告频率：{freq}\n"
+            f"   建议：\n"
+            f"   - 确认股票代码是否正确\n"
+            f"   - 尝试使用其他数据源（如 akshare_fundamentals）\n"
+            f"   - 检查该股票是否已上市"
+        )
 
     except Exception as e:
         logger.error(f"[API_ERROR] sina_income_statement | {ticker} | error={str(e)}")
@@ -486,11 +465,7 @@ def get_sina_cashflow(
     """
     获取现金流量表数据
 
-    TODO: 当前返回模拟数据，需要实现真实数据获取
-    推荐使用以下库之一：
-    - akshare: ak.stock_cash_flow_sheet_by_yearly_em() / ak.stock_cash_flow_sheet_by_quarterly_em()
-    - tushare: pro.cashflow(ts_code=...)
-    - 新浪财经HTML解析: http://money.finance.sina.com.cn/corp/go.php/vFD_CashFlowSheet/stockid/600519/displaytype/4.phtml
+    使用baostock获取真实数据，如果不可用则返回错误提示
 
     Args:
         ticker: 股票代码
@@ -498,79 +473,29 @@ def get_sina_cashflow(
         curr_date: 当前日期（可选）
 
     Returns:
-        str: Markdown格式的现金流量表
+        str: Markdown格式的现金流量表或错误提示
     """
     logger.info(f"[API_CALL] sina_cashflow | symbol={ticker} | freq={freq}")
 
     try:
         symbol = convert_symbol_to_sina_format(ticker)
-        code = symbol.replace("sh", "").replace("sz", "")
 
-        # 构建模拟的现金流量表数据
-        result = f"""# {symbol.upper()} 现金流量表
+        # Try baostock first for cash_flow data
+        result = _get_baostock_financial_data(symbol, 'cash_flow', freq=freq)
+        if result:
+            logger.info(f"[API_SUCCESS] sina_cashflow | {symbol} | from baostock")
+            return result
 
-## 报告频率: {freq}
-
-| 项目 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| **经营活动现金流** | | | | |
-| 经营活动现金流入小计 | 35,800 | 34,200 | 32,600 | 31,000 |
-| 经营活动现金流出小计 | 12,400 | 11,900 | 11,300 | 10,800 |
-| 经营活动产生的现金流量净额 | 23,400 | 22,300 | 21,300 | 20,200 |
-| **投资活动现金流** | | | | |
-| 投资活动现金流入小计 | 2,100 | 1,900 | 1,800 | 1,700 |
-| 投资活动现金流出小计 | 8,500 | 8,200 | 7,800 | 7,500 |
-| 投资活动产生的现金流量净额 | -6,400 | -6,300 | -6,000 | -5,800 |
-| **筹资活动现金流** | | | | |
-| 筹资活动现金流入小计 | 500 | 450 | 400 | 350 |
-| 筹资活动现金流出小计 | 15,200 | 14,500 | 13,800 | 13,200 |
-| 筹资活动产生的现金流量净额 | -14,700 | -14,050 | -13,400 | -12,850 |
-| **现金及现金等价物净增加额** | 2,300 | 1,950 | 1,900 | 1,550 |
-
-*单位：百万元*
-
-## 现金流分析指标
-
-| 指标 | 2024Q3 | 2024Q2 | 2024Q1 | 2023Q4 |
-|------|--------|--------|--------|--------|
-| 经营现金流/净利润 | 1.58 | 1.58 | 1.59 | 1.59 |
-| 自由现金流 | 17,000 | 16,100 | 15,300 | 14,400 |
-| 现金流覆盖率 | 158% | 158% | 159% | 159% |
-
-## TODO: 实现真实数据获取
-
-```python
-# 推荐方案1：使用 akshare（最简单）
-import akshare as ak
-
-def get_cashflow_real(symbol, freq='quarterly'):
-    code = symbol.replace('sh', '').replace('sz', '')
-    if freq == 'quarterly':
-        df = ak.stock_cash_flow_sheet_by_quarterly_em(symbol=code)
-    else:
-        df = ak.stock_cash_flow_sheet_by_yearly_em(symbol=code)
-    return df.to_markdown()
-
-# 推荐方案2：使用 tushare
-import tushare as ts
-
-def get_cashflow_real(symbol, freq='quarterly'):
-    pro = ts.pro_api('your_token')
-    df = pro.cashflow(ts_code=symbol.upper(), period='2024Q3')
-    return df
-
-# 推荐方案3：新浪财经HTML解析
-# URL格式: http://money.finance.sina.com.cn/corp/go.php/vFD_CashFlowSheet/stockid/{code}/displaytype/4.phtml
-# HTML结构复杂，建议优先使用专业库
-```
-
----
-*数据来源：新浪财经（示例数据，需完善）*
-*生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-"""
-
-        logger.info(f"[API_SUCCESS] sina_cashflow | {symbol} | freq={freq}")
-        return result
+        logger.warning(f"[API_UNAVAILABLE] sina_cashflow | {symbol} | no data available")
+        return (
+            f"⚠️ 无法获取 {ticker} 的现金流量表数据\n"
+            f"   原因：数据源暂无该股票的财务数据\n"
+            f"   报告频率：{freq}\n"
+            f"   建议：\n"
+            f"   - 确认股票代码是否正确\n"
+            f"   - 尝试使用其他数据源（如 akshare_fundamentals）\n"
+            f"   - 检查该股票是否已上市"
+        )
 
     except Exception as e:
         logger.error(f"[API_ERROR] sina_cashflow | {ticker} | error={str(e)}")

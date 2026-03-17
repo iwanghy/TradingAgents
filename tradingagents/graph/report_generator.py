@@ -474,12 +474,12 @@ class ReportGenerator:
 **重要：本报告专为手机阅读设计，使用固定布局（非响应式）**
 
 **设计主题和风格**：
-- 使用 Bloomberg Terminal 暗色主题风格
-- 背景颜色：纯黑色 #000000
-- 主要文字颜色：浅灰色 #E9ECF1
-- 次要文字颜色：中灰色 #A9B3C1
-- 边框和分隔线颜色：深灰色 #1A1A1A
-- 整体风格专业、简洁、高对比度
+- 使用简洁清爽的浅色主题风格，白底黑字为主
+- 背景颜色：纯白色 #FFFFFF
+- 主要文字颜色：深黑色 #1A1A1A
+- 次要文字颜色：中灰色 #666666
+- 边框和分隔线颜色：浅灰色 #E0E0E0
+- 整体风格专业、简洁、高对比度、视觉醒目
 
 **布局要求（手机固定布局）**：
 - 专为手机屏幕设计：页面固定宽度 375px（iPhone标准宽度）
@@ -492,15 +492,14 @@ class ReportGenerator:
 **决策卡片设计（手机适配）**：
 - 决策卡片必须是页面的第一个视觉元素
 - 卡片宽度：343px（375px - 左右各16px）
-- 根据决策类型使用不同的左边框颜色和强调色：
-  * 买入（BUY）：主色调 #4AF6C3（青绿色）
-  * 卖出（SELL）：主色调 #FF433D（红色）
-  * 持有（HOLD）：主色调 #0068FF（蓝色）
+- 卡片背景：根据决策类型使用醒目的背景色：
+  * 买入（BUY）：背景色 #E8F5E9（浅绿色），左边框 #2E7D32（深绿色）
+  * 卖出（SELL）：背景色 #FFEBEE（浅红色），左边框 #C62828（深红色）
+  * 持有（HOLD）：背景色 #E3F2FD（浅蓝色），左边框 #1565C0（深蓝色）
 - 卡片内边距：20px（上下左右）
 - 左边框宽度：4px，颜色与决策类型匹配
-- 卡片背景色略深于页面背景（建议 #0A0A0A）
-- 决策文字字体大小：28px，加粗显示
-- 卡片应包含股票代码（18px）、分析日期（14px）、决策类型（28px加粗）
+- 决策文字字体大小：32px，加粗显示，使用深色文字
+- 卡片应包含股票代码（18px）、分析日期（14px）、决策类型（32px加粗）
 
 **技术限制**：
 - 生成单个独立的 HTML 文件
@@ -516,13 +515,13 @@ class ReportGenerator:
 请确保生成的HTML包含以下基础CSS样式（不需要使用代码块格式，直接在style标签中写入）：
 
 - 重置样式：所有元素margin和padding为0，box-sizing为border-box
-- body样式：宽度375px，字体18px，行高32px，背景色#000000，文字色#E9ECF1
-- h1样式：字体32px，行高40px，上下边距20px
-- h2样式：字体26px，行高36px，上下边距20px
-- h3样式：字体22px，行高30px，上下边距20px
-- p样式：下边距24px，左对齐
+- body样式：宽度375px，字体18px，行高32px，背景色#FFFFFF，文字色#1A1A1A
+- h1样式：字体32px，行高40px，上下边距20px，颜色#1A1A1A
+- h2样式：字体26px，行高36px，上下边距20px，颜色#333333
+- h3样式：字体22px，行高30px，上下边距20px，颜色#444444
+- p样式：下边距24px，左对齐，颜色#1A1A1A
 - .container样式：宽度343px，左右padding各16px
-- 决策卡片样式：padding 20px，左边框4px，背景色#0A0A0A，字体28px加粗
+- 决策卡片样式：padding 20px，左边框4px，字体32px加粗
 
 **内容组织结构**：
 1. 页面头部：股票代码、公司名称、分析日期
@@ -678,7 +677,8 @@ class ReportGenerator:
         state: Dict[str, Any],
         decision: str,
         translate: bool = True,
-        max_retries: int = 3
+        max_retries: int = 3,
+        markdown_text: Optional[str] = None
     ) -> str:
         """
         使用 LLM 生成 HTML 报告的主方法
@@ -690,16 +690,22 @@ class ReportGenerator:
             decision: 最终交易决策 (BUY/SELL/HOLD)
             translate: 是否翻译为中文
             max_retries: 最大重试次数
+            markdown_text: 可选，已生成的 Markdown 报告。如果提供，将跳过 Markdown 生成步骤，
+                          直接使用传入的内容。这可以避免重复翻译。
             
         Returns:
             生成的 HTML 报告字符串
         """
         print("🔄 开始生成 HTML 报告...")
         
-        # 1. 先生成 Markdown 报告
-        print("📄 正在生成 Markdown 报告...")
-        markdown_text = self.generate_markdown_report(state, decision, translate=translate)
-        print(f"✅ Markdown 报告生成完成 (长度: {len(markdown_text)} 字符)")
+        # 1. 获取 Markdown 报告（如果已提供则跳过生成）
+        if markdown_text:
+            print("📄 使用已提供的 Markdown 报告...")
+            print(f"✅ Markdown 报告已就绪 (长度: {len(markdown_text)} 字符)")
+        else:
+            print("📄 正在生成 Markdown 报告...")
+            markdown_text = self.generate_markdown_report(state, decision, translate=translate)
+            print(f"✅ Markdown 报告生成完成 (长度: {len(markdown_text)} 字符)")
         
         # 2. 尝试生成 HTML（带重试机制）
         html_result = None
@@ -805,14 +811,14 @@ class ReportGenerator:
         }
         decision_zh = decision_map.get(decision.upper(), decision)
         
-        # 生成基础 HTML（手机适配版本）
-        # 决策颜色映射
-        decision_colors = {
-            "BUY": "#4AF6C3",  # 青绿色
-            "SELL": "#FF433D",  # 红色
-            "HOLD": "#0068FF"   # 蓝色
+        # 生成基础 HTML（手机适配版本 - 白底黑字风格）
+        # 决策颜色映射（浅色背景 + 深色边框）
+        decision_styles = {
+            "BUY": {"bg": "#E8F5E9", "border": "#2E7D32", "text": "#1B5E20"},  # 绿色系
+            "SELL": {"bg": "#FFEBEE", "border": "#C62828", "text": "#B71C1C"},  # 红色系
+            "HOLD": {"bg": "#E3F2FD", "border": "#1565C0", "text": "#0D47A1"}   # 蓝色系
         }
-        decision_color = decision_colors.get(decision.upper(), "#0068FF")
+        style = decision_styles.get(decision.upper(), decision_styles["HOLD"])
 
         html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -830,8 +836,8 @@ class ReportGenerator:
         body {{
             width: 375px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #000000;
-            color: #E9ECF1;
+            background-color: #FFFFFF;
+            color: #1A1A1A;
             font-size: 18px;
             line-height: 32px;
             overflow-x: hidden;
@@ -846,10 +852,11 @@ class ReportGenerator:
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 1px solid #E0E0E0;
         }}
 
         .title {{
-            color: #E9ECF1;
+            color: #1A1A1A;
             font-size: 32px;
             line-height: 40px;
             margin-bottom: 16px;
@@ -857,34 +864,40 @@ class ReportGenerator:
         }}
 
         .subtitle {{
-            color: #A9B3C1;
+            color: #666666;
             font-size: 14px;
             line-height: 20px;
         }}
 
         .decision {{
             text-align: center;
-            font-size: 28px;
-            line-height: 36px;
+            font-size: 32px;
+            line-height: 40px;
             font-weight: bold;
-            color: {decision_color};
+            color: {style['text']};
             margin: 20px 0;
-            padding: 20px;
-            background-color: #0A0A0A;
-            border-left: 4px solid {decision_color};
+            padding: 24px 20px;
+            background-color: {style['bg']};
+            border-left: 4px solid {style['border']};
             border-radius: 4px;
+        }}
+
+        .decision-label {{
+            font-size: 14px;
+            color: #666666;
+            margin-bottom: 8px;
         }}
 
         .section {{
             margin: 20px 0;
             padding: 16px;
-            border-left: 3px solid #1A1A1A;
-            background-color: #0A0A0A;
+            border-left: 3px solid #E0E0E0;
+            background-color: #FAFAFA;
             border-radius: 4px;
         }}
 
         .section-title {{
-            color: #E9ECF1;
+            color: #333333;
             font-size: 22px;
             line-height: 30px;
             margin-bottom: 16px;
@@ -892,7 +905,7 @@ class ReportGenerator:
         }}
 
         .content {{
-            color: #A9B3C1;
+            color: #1A1A1A;
             font-size: 18px;
             line-height: 32px;
         }}
@@ -910,18 +923,24 @@ class ReportGenerator:
             margin: 8px 0;
         }}
 
+        .content strong {{
+            color: #1A1A1A;
+        }}
+
         .footer {{
             margin-top: 40px;
             padding: 20px;
-            border-top: 1px solid #1A1A1A;
+            border-top: 1px solid #E0E0E0;
             font-size: 14px;
             line-height: 24px;
-            color: #A9B3C1;
+            color: #666666;
             text-align: center;
+            background-color: #FAFAFA;
         }}
 
         .footer h3 {{
             font-size: 18px;
+            color: #333333;
             margin-bottom: 16px;
         }}
     </style>
@@ -934,7 +953,8 @@ class ReportGenerator:
         </div>
 
         <div class="decision">
-            最终决策: {decision_zh}
+            <div class="decision-label">最终交易决策</div>
+            {decision_zh}
         </div>
 
         <div class="section">

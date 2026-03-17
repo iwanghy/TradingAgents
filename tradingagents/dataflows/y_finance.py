@@ -418,7 +418,12 @@ def get_stockstats_indicator(
         print(
             f"Error getting stockstats indicator data for indicator {indicator} on {curr_date}: {e}"
         )
-        return ""
+        return (
+            f"⚠️ 无法获取 {symbol} 的技术指标 {indicator} 数据\n"
+            f"   日期：{curr_date}\n"
+            f"   错误：{str(e)}\n"
+            f"   建议：检查股票代码和指标名称是否正确"
+        )
 
     return str(indicator_value)
 
