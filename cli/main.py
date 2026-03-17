@@ -1191,5 +1191,38 @@ def analyze():
     run_analysis()
 
 
+@app.command(name="convert-jpg")
+def convert_jpg(
+    html_file: str = typer.Argument(..., help="HTML 文件路径"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="输出目录"),
+    quality: int = typer.Option(80, "--quality", "-q", help="JPG 质量 (1-100)"),
+    segment: bool = typer.Option(False, "--segment", "-s", help="启用分段模式"),
+    max_segments: int = typer.Option(20, "--max-segments", "-m", help="最大分段数量 (默认20)"),
+):
+    """将 HTML 报告转换为 JPG 图片"""
+    from tradingagents.utils.html_to_jpg import convert, check_wkhtmltoimage
+
+    if not check_wkhtmltoimage():
+        console.print("[red]错误: wkhtmltoimage 未安装[/red]")
+        console.print("请运行: sudo apt-get install wkhtmltopdf")
+        raise typer.Exit(1)
+
+    html_path = Path(html_file)
+    if output_dir is None:
+        output_dir = str(html_path.parent)
+
+    result = convert(
+        html_path=html_path,
+        output_dir=Path(output_dir),
+        quality=quality,
+        enable_segmentation=segment,
+        max_segments=max_segments
+    )
+
+    console.print(f"[green]✓ 成功生成 {len(result)} 张图片:[/green]")
+    for path in result:
+        console.print(f"  - {path}")
+
+
 if __name__ == "__main__":
     app()

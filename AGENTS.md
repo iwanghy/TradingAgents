@@ -27,6 +27,18 @@ python test_news_api.py                     # 新闻 API 测试
 # pytest 单个测试
 pytest test_news_api.py::test_yfinance_news
 pytest test_a_share_indicators.py -k "sina"
+
+# HTML 转 JPG
+python -m cli.main convert-jpg reports/sample.html              # 基本用法
+python -m cli.main convert-jpg reports/sample.html -o /path/to/output  # 指定输出目录
+python -m cli.main convert-jpg reports/sample.html --quality 90  # 设置图片质量
+python -m cli.main convert-jpg reports/sample.html --segment     # 启用分段模式
+```
+
+**注意**: `convert-jpg` 命令需要系统依赖 `wkhtmltoimage`
+```bash
+# Ubuntu/Debian 安装
+sudo apt-get install wkhtmltopdf
 ```
 
 ### 代码质量

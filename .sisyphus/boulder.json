@@ -1,9 +1,9 @@
 {
-  "active_plan": "/home/why/github/TradingAgents/.sisyphus/plans/fix-mock-financial-data.md",
-  "started_at": "2026-03-17T07:32:59.578Z",
+  "active_plan": "/home/why/github/TradingAgents/.sisyphus/plans/html-to-jpg-converter.md",
+  "started_at": "2026-03-17T09:01:48.575Z",
   "session_ids": [
     "ses_30563eeb7ffe2KE030gKxeancy"
   ],
-  "plan_name": "fix-mock-financial-data",
+  "plan_name": "html-to-jpg-converter",
   "agent": "atlas"
 }
