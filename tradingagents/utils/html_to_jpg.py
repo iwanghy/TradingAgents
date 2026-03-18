@@ -103,14 +103,69 @@ def segment_html_by_sections(html_content: str) -> List[str]:
             return ''
         return str(child)
 
-    # 策略 1: 检查是否有直接在 container 下的 h2 标签
     children = list(container.children)
+    segments = []
+
+    # 辅助函数：查找直接子元素中的特定标签
+    def find_direct_children_by_tag(tag_name: str) -> List:
+        """查找 container 直接子元素中指定标签的元素"""
+        result = []
+        for i, child in enumerate(children):
+            if hasattr(child, 'name') and child.name == tag_name:
+                result.append((i, child))
+        return result
+
+    # 策略 1: 按 container 直接子元素中的 <article> 分割（优先，适用于新报告结构）
+    articles = find_direct_children_by_tag('article')
+    if articles:
+        # 收集第一个 article 之前的所有内容（header、decision-card、核心摘要等）
+        first_article_pos = articles[0][0]
+        first_content = ''.join(
+            child_to_str(children[i]) for i in range(first_article_pos) if should_include(children[i])
+        )
+        if first_content.strip():
+            segments.append(build_html(first_content))
+
+        # 每个 article 作为一个独立片段
+        for pos, article in articles:
+            content = str(article)
+            if content.strip():
+                segments.append(build_html(content))
+
+        # 检查最后一个 article 之后是否还有内容（不包括 footer）
+        last_article_pos = articles[-1][0]
+        # 查找 footer 在 children 中的位置
+        footer_pos = len(children)
+        footer_element = None
+        for i in range(last_article_pos + 1, len(children)):
+            if hasattr(children[i], 'name') and children[i].name == 'footer':
+                footer_pos = i
+                footer_element = children[i]
+                break
+
+        # 收集 article 和 footer 之间的内容
+        trailing_content = ''.join(
+            child_to_str(children[i]) for i in range(last_article_pos + 1, footer_pos) if should_include(children[i])
+        )
+        if trailing_content.strip():
+            segments.append(build_html(trailing_content))
+
+        # footer 单独一个片段（可能在 container 内或外）
+        if footer_element:
+            segments.append(build_html(str(footer_element)))
+        else:
+            # 检查 body 下的 footer（在 container 外部）
+            body_footer = soup.find('footer')
+            if body_footer:
+                segments.append(build_html(str(body_footer)))
+
+        return segments if segments else [html_content]
+
+    # 策略 2: 按 container 直接子元素中的 <h2> 分割
     h2_positions = []
     for i, child in enumerate(children):
         if hasattr(child, 'name') and child.name == 'h2':
             h2_positions.append(i)
-
-    segments = []
 
     if h2_positions:
         # 按 h2 标题分割
@@ -120,19 +175,15 @@ def segment_html_by_sections(html_content: str) -> List[str]:
             segments.append(build_html(first_content))
 
         # 每个 h2 片段：包含 h2 到下一个 h2 之前的元素
-        # 但要排除下一个 h2 前面的纯文本节点（通常是注释）
         for idx, pos in enumerate(h2_positions):
             if idx < len(h2_positions) - 1:
                 next_h2_pos = h2_positions[idx + 1]
-                # 找到下一个有意义元素的位置（跳过纯文本节点）
-                # 从 next_h2_pos - 1 向前找，直到找到有 name 的元素或到达 pos
                 end_pos = next_h2_pos
                 for j in range(next_h2_pos - 1, pos, -1):
                     child = children[j]
                     if hasattr(child, 'name') and child.name:
                         end_pos = j + 1
                         break
-                    # 如果是纯文本节点（可能是注释），继续向前找
                 content = ''.join(child_to_str(children[i]) for i in range(pos, end_pos))
             else:
                 # 最后一个 h2：到 footer 之前
@@ -151,50 +202,52 @@ def segment_html_by_sections(html_content: str) -> List[str]:
         if footer:
             segments.append(build_html(str(footer)))
 
-    else:
-        # 策略 2: 按 section 元素分割
-        sections = (
-            container.find_all('div', class_='section') or
-            container.find_all('section', class_='highlight-box') or
-            container.find_all('section') or
-            []
-        )
+        return segments if segments else [html_content]
 
-        if not sections:
-            content = ''.join(child_to_str(child) for child in children if should_include(child))
-            return [build_html(content)]
+    # 策略 3: 按 section 元素分割（备选方案）
+    sections = (
+        container.find_all('div', class_='section') or
+        container.find_all('section', class_='highlight-box') or
+        container.find_all('section') or
+        []
+    )
 
-        header = (
-            container.find('div', class_='header') or
-            container.find('header', class_='header-info') or
-            container.find('header')
-        )
-        decision = (
-            container.find('div', class_='decision') or
-            container.find('div', class_='decision-card')
-        )
-        footer = (
-            container.find('div', class_='footer') or
-            container.find('footer', class_='disclaimer') or
-            container.find('footer')
-        )
+    if not sections:
+        content = ''.join(child_to_str(child) for child in children if should_include(child))
+        return [build_html(content)]
 
-        first_parts = []
-        if header:
-            first_parts.append(str(header))
-        if decision:
-            first_parts.append(str(decision))
-        if sections:
-            first_parts.append(str(sections[0]))
+    header = (
+        container.find('div', class_='header') or
+        container.find('header', class_='header-info') or
+        container.find('header')
+    )
+    decision = (
+        container.find('div', class_='decision') or
+        container.find('div', class_='decision-card')
+    )
+    footer = (
+        container.find('div', class_='footer') or
+        container.find('footer', class_='disclaimer') or
+        container.find('footer') or
+        soup.find('footer')
+    )
 
-        if first_parts:
-            segments.append(build_html(''.join(first_parts)))
+    first_parts = []
+    if header:
+        first_parts.append(str(header))
+    if decision:
+        first_parts.append(str(decision))
+    if sections:
+        first_parts.append(str(sections[0]))
 
-        for i in range(1, len(sections)):
-            segments.append(build_html(str(sections[i])))
+    if first_parts:
+        segments.append(build_html(''.join(first_parts)))
 
-        if footer:
-            segments.append(build_html(str(footer)))
+    for i in range(1, len(sections)):
+        segments.append(build_html(str(sections[i])))
+
+    if footer:
+        segments.append(build_html(str(footer)))
 
     return segments if segments else [html_content]
 
