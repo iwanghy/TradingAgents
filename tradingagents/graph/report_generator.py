@@ -507,8 +507,26 @@ class ReportGenerator:
 - 严禁使用任何 JavaScript 代码
 - 严禁引用外部 CSS 或 JS 文件
 - 使用 UTF-8 编码
-- 使用语义化 HTML5 标签（header, main, section, article, footer 等）
 - 确保所有标签正确闭合和嵌套
+
+**HTML 结构要求（重要！拆分脚本依赖此结构，务必严格遵守）**：
+- 主内容容器**必须**使用 `<div class="container">`，**禁止**使用 `<main class="container">` 或其他标签
+- `<div class="container">` 必须直接包含所有分析章节（作为直接子元素）
+- 每个分析章节**必须**使用独立的 `<section>` 标签（不带 class="content-section" 等包装）
+- `<section>` 内部**必须**直接包含 `<h2>` 标题作为章节开头
+- **禁止**使用 `<section class="content-section">`、`<div class="section">` 或其他自定义 class 包装章节
+- 正确的结构示例：
+  ```html
+  <div class="container">
+      <header>...</header>
+      <div class="decision-card">...</div>
+      <section><h2>📊 市场分析</h2>...内容...</section>
+      <section><h2>💰 基本面分析</h2>...内容...</section>
+      <section><h2>📰 新闻与情绪</h2>...内容...</section>
+      ...
+      <footer>...</footer>
+  </div>
+  ```
 
 **必须包含的CSS基础样式**（在<style>标签中）：
 
