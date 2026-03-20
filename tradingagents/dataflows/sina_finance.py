@@ -10,6 +10,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Annotated, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 try:
     import baostock as bs
@@ -187,7 +188,7 @@ def _get_baostock_financial_data(
     freq: str = "quarterly"
 ) -> Optional[str]:
     """
-    使用 baostock 获取真实财务数据
+    使用 baostock 获取真实财务数据（带超时保护）
     
     Args:
         ticker: 股票代码（如 sh600519 或 sz000001）
@@ -216,7 +217,8 @@ def _get_baostock_financial_data(
     
     query_func = api_map[data_type]
     
-    try:
+    def _fetch_data():
+        """实际获取数据的函数"""
         # 登录 baostock
         lg = bs.login()
         if lg.error_code != '0':
@@ -313,9 +315,24 @@ def _get_baostock_financial_data(
         title = f"# {ticker.upper()} {data_type_map.get(data_type, data_type)}（来自 baostock）\n\n"
         result = title + markdown_table
         
-        logger.info(f"[BAOSTOCK_SUCCESS] {ticker} | {data_type} | records={len(all_data)}")
         return result
-        
+    
+    # 使用线程池添加超时保护
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch_data)
+            # 设置30秒超时
+            result = future.result(timeout=30)
+            if result:
+                logger.info(f"[BAOSTOCK_SUCCESS] {ticker} | {data_type} | records={result.count('Q') // 2}")
+            return result
+    except FutureTimeoutError:
+        logger.error(f"[BAOSTOCK_TIMEOUT] {ticker} | {data_type} | 查询超时(30s)")
+        try:
+            bs.logout()
+        except:
+            pass
+        return None
     except Exception as e:
         logger.error(f"[BAOSTOCK_ERROR] {ticker} | {data_type} | error={str(e)}")
         try:

@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 import html5lib
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tradingagents.llm_clients.factory import create_llm_client
 
@@ -249,6 +250,69 @@ class ReportGenerator:
 
         return final_results
 
+    def _get_company_full_name(self, ticker: str) -> str:
+        """
+        获取股票的公司全名
+
+        优先级：A股使用腾讯API，美股使用 yfinance
+
+        Args:
+            ticker: 股票代码
+
+        Returns:
+            公司全名，如果获取失败则返回空字符串
+        """
+        import requests
+        
+        # 1. 检查是否为A股代码（纯6位数字，或sh/sz前缀）
+        import re
+        a_share_pattern = re.compile(r'^(sh|sz|SH|SZ)?(\d{6})(\..*)?$')
+        match = a_share_pattern.match(ticker)
+        
+        if match:
+            # A股，使用腾讯API获取
+            try:
+                code = match.group(2)  # 提取6位数字代码
+                
+                # 确定市场前缀
+                if code.startswith('6'):
+                    symbol = f'sh{code}'  # 上海
+                else:
+                    symbol = f'sz{code}'  # 深圳
+                
+                # 腾讯API
+                url = f'http://qt.gtimg.cn/q={symbol}'
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    response.encoding = 'gbk'
+                    content = response.text
+                    
+                    # 解析: v_sh600519="1~贵州茅台~600519~..."
+                    if '~' in content:
+                        parts = content.split('~')
+                        if len(parts) > 1:
+                            name = parts[1].strip()
+                            if name:
+                                return name
+            except Exception as e:
+                print(f"⚠️ 腾讯API获取A股全名失败: {e}")
+        
+        # 2. 美股或其他市场，使用 yfinance 获取
+        try:
+            import yfinance as yf
+            ticker_obj = yf.Ticker(ticker)
+            info = ticker_obj.info
+            # 尝试获取全名
+            full_name = info.get('longName') or info.get('shortName') or info.get('companyName')
+            if full_name:
+                return full_name
+        except Exception as e:
+            print(f"⚠️ yfinance获取股票全名失败: {e}")
+        
+        return ""
+
     def generate_markdown_report(
         self,
         state: Dict[str, Any],
@@ -269,6 +333,9 @@ class ReportGenerator:
         ticker = state.get("company_of_interest", "UNKNOWN")
         trade_date = state.get("trade_date", "UNKNOWN")
 
+        # 尝试获取公司全名
+        company_full_name = self._get_company_full_name(ticker)
+
         # 决策映射
         decision_map = {
             "BUY": "买入",
@@ -279,8 +346,11 @@ class ReportGenerator:
         # 生成报告
         report_lines = []
 
-        # 标题
-        report_lines.append(f"# {ticker} 交易分析报告\n")
+        # 标题（包含股票代码和全名）
+        if company_full_name:
+            report_lines.append(f"# {ticker} - {company_full_name} 交易分析报告\n")
+        else:
+            report_lines.append(f"# {ticker} 交易分析报告\n")
         report_lines.append(f"**分析日期**: {trade_date}\n")
         report_lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         report_lines.append("---\n")
@@ -454,7 +524,8 @@ class ReportGenerator:
     def _build_html_prompt(
         self,
         markdown: str,
-        error_feedback: Optional[list[str]] = None
+        error_feedback: Optional[list[str]] = None,
+        company_name: str = ""
     ) -> str:
         """
         构建 HTML 生成 prompt
@@ -465,11 +536,24 @@ class ReportGenerator:
         Args:
             markdown: Markdown 报告内容
             error_feedback: 可选的错误反馈列表（用于迭代修复）
+            company_name: 公司全名（可选，用于在首页醒目显示）
 
         Returns:
             完整的 prompt 文本
         """
+        # 如果没有传入公司名，尝试从markdown中提取
+        if not company_name:
+            # 尝试从markdown标题中提取股票代码和公司名
+            import re
+            match = re.match(r'#\s*([A-Z]+)\s*-\s*(.+?)\s+交易分析报告', markdown)
+            if match:
+                company_name = match.group(2)
+
         prompt = f"""你是一个专业的金融报告设计师。请根据以下 Markdown 分析报告，生成一个面向投资小白的视觉化 HTML 报告。
+
+**重要：首页必须显示公司全名**
+
+**公司全名**：{company_name if company_name else "（请从股票代码推断公司名称）"}
 
 **重要：本报告专为手机阅读设计，使用固定布局（非响应式）**
 
@@ -542,8 +626,9 @@ class ReportGenerator:
 - 决策卡片样式：padding 20px，左边框4px，字体32px加粗
 
 **内容组织结构**：
-1. 页面头部：股票代码、公司名称、分析日期
-2. 决策卡片：最顶部的执行摘要，清晰展示交易决策
+**首页设计要求（非常重要！）**：
+1. **页面头部**：必须显示公司全名（使用更大的字体如28px，加粗），股票代码使用较小字体（14px）显示在公司全名下方，分析日期
+2. **决策卡片**：最顶部的执行摘要，清晰展示交易决策
 3. 详细分析部分：
    - 市场分析
    - 基本面分析
@@ -716,6 +801,10 @@ class ReportGenerator:
         """
         print("🔄 开始生成 HTML 报告...")
         
+        # 获取股票代码和公司全名
+        ticker = state.get("company_of_interest", "")
+        company_full_name = self._get_company_full_name(ticker) if ticker else ""
+        
         # 1. 获取 Markdown 报告（如果已提供则跳过生成）
         if markdown_text:
             print("📄 使用已提供的 Markdown 报告...")
@@ -735,13 +824,13 @@ class ReportGenerator:
             current_html = None  # 当前尝试的 HTML
             
             try:
-                # 构建 prompt
+                # 构建 prompt（传入公司全名）
                 if attempt == 0:
                     # 第一次尝试，使用原始 markdown
-                    prompt = self._build_html_prompt(markdown_text)
+                    prompt = self._build_html_prompt(markdown_text, company_name=company_full_name)
                 else:
                     # 后续尝试，添加错误反馈
-                    prompt = self._build_html_prompt(markdown_text, error_feedback=last_errors)
+                    prompt = self._build_html_prompt(markdown_text, error_feedback=last_errors, company_name=company_full_name)
                 
                 print("📝 正在构建 LLM 提示词...")
                 

@@ -15,10 +15,13 @@ def create_llm_client(
     """Create an LLM client for the specified provider.
 
     Args:
-        provider: LLM provider (openai, anthropic, google, xai, ollama, openrouter)
+        provider: LLM provider (openai, anthropic, google, xai, ollama, openrouter, zhipu)
         model: Model name/identifier
         base_url: Optional base URL for API endpoint
         **kwargs: Additional provider-specific arguments
+                   - timeout: HTTP请求超时(秒)
+                   - max_retries: HTTP请求重试次数
+                   - invoke_timeout: LLM调用超时(秒)，默认120秒
 
     Returns:
         Configured BaseLLMClient instance

@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
     "quick_think_llm": "gpt-5-mini",
     "backend_url": "https://api.openai.com/v1",
     "max_llm_retries": 3,                # 自动重试次数，用于处理 API 限流（429错误）和网络错误
+    "llm_invoke_timeout": 120,           # LLM调用超时时间（秒），防止服务器负载高时卡死
     # Provider-specific thinking configuration
     "google_thinking_level": None,      # "high", "minimal", etc.
     "openai_reasoning_effort": None,    # "medium", "high", "low"
