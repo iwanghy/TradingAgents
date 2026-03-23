@@ -11,6 +11,7 @@ import html5lib
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tradingagents.llm_clients.factory import create_llm_client
+from tradingagents.agents.compliance.compliance_officer import create_compliance_officer
 
 
 class ReportGenerator:
@@ -29,13 +30,17 @@ class ReportGenerator:
         self.config = config
         self.translator = None
         self.html_generator = None
+        self.compliance_officer = None
         self.html_llm_model = html_llm_model
 
         provider = config.get("llm_provider")
         if provider:
             try:
                 # 1. 创建翻译器（用于文本翻译）
-                model = config.get("quick_think_llm", config.get("deep_think_llm"))
+                model = config.get("quick_think_llm") or config.get("deep_think_llm")
+                if not model:
+                    raise ValueError("配置中必须指定 quick_think_llm 或 deep_think_llm")
+
                 self.translator = create_llm_client(
                     provider=provider,
                     model=model
@@ -62,6 +67,19 @@ class ReportGenerator:
                         self.html_generator = None
                 else:
                     print(f"   📝 HTML生成将使用翻译器模型: {model}")
+
+                # 3. 创建合规员（使用翻译器作为 LLM 客户端）
+                if self.translator:
+                    try:
+                        self.compliance_officer = create_compliance_officer(
+                            llm_client=self.translator,
+                            timeout=30
+                        )
+                        print(f"✅ 合规员初始化成功")
+                    except Exception as e:
+                        print(f"⚠️ 警告: 合规员初始化失败: {e}")
+                        print(f"   合规检查功能将不可用")
+                        self.compliance_officer = None
 
             except Exception as e:
                 print(f"⚠️ 警告: 无法初始化翻译器: {e}")
@@ -781,13 +799,14 @@ class ReportGenerator:
         decision: str,
         translate: bool = True,
         max_retries: int = 3,
-        markdown_text: Optional[str] = None
+        markdown_text: Optional[str] = None,
+        enable_compliance: bool = True
     ) -> str:
         """
         使用 LLM 生成 HTML 报告的主方法
-        
+
         集成所有子方法：生成 Markdown、构建提示词、调用 LLM、验证 HTML、实现重试机制
-        
+
         Args:
             state: Agent状态字典,包含所有分析报告
             decision: 最终交易决策 (BUY/SELL/HOLD)
@@ -795,9 +814,10 @@ class ReportGenerator:
             max_retries: 最大重试次数
             markdown_text: 可选，已生成的 Markdown 报告。如果提供，将跳过 Markdown 生成步骤，
                           直接使用传入的内容。这可以避免重复翻译。
-            
+            enable_compliance: 是否启用合规检查（默认: True）
+
         Returns:
-            生成的 HTML 报告字符串
+            生成的 HTML 报告字符串（经过合规检查后的版本）
         """
         print("🔄 开始生成 HTML 报告...")
         
@@ -878,17 +898,66 @@ class ReportGenerator:
         # 3. 处理最终结果
         if html_result:
             print(f"🎉 HTML 报告生成成功！总长度: {len(html_result)} 字符")
-            return html_result
+            final_html = html_result
         else:
             print(f"❌ HTML 报告生成失败，已尝试 {max_retries} 次")
             print("   返回最后一次生成结果（可能格式有问题）")
-            
+
             # 如果有最后一次的 HTML 结果，返回它
             if 'last_html' in locals() and last_html is not None:
-                return last_html
+                final_html = last_html
             else:
                 # 如果没有任何有效结果，返回一个基本的 HTML 模板
-                return self._generate_fallback_html(state, decision, translate)
+                final_html = self._generate_fallback_html(state, decision, translate)
+
+        # 4. 合规检查（如果启用且合规员可用）
+        if enable_compliance and self.compliance_officer:
+            try:
+                print("🔍 开始合规检查...")
+
+                # 生成文件名
+                ticker = state.get("company_of_interest", "report")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_filename = f"{ticker}_{timestamp}"
+
+                # 保存原始 HTML
+                original_filepath = Path("reports") / f"{base_filename}_original.html"
+                original_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+                with open(original_filepath, 'w', encoding='utf-8') as f:
+                    f.write(final_html)
+                print(f"✅ 原始 HTML 已保存: {original_filepath}")
+
+                # 调用合规员检查
+                compliance_result = self.compliance_officer.review_html(final_html)
+
+                if compliance_result.is_success:
+                    print("✅ 合规检查通过")
+                    compliant_html = compliance_result.compliant_html
+
+                    # 保存合规 HTML
+                    compliant_filepath = Path("reports") / f"{base_filename}_compliant.html"
+                    with open(compliant_filepath, 'w', encoding='utf-8') as f:
+                        f.write(compliant_html)
+                    print(f"✅ 合规 HTML 已保存: {compliant_filepath}")
+
+                    # 返回合规后的 HTML
+                    return compliant_html
+                else:
+                    print(f"⚠️ 合规检查失败: {compliance_result.error_message}")
+                    print("   返回原始 HTML")
+
+                    # 即使失败也保存原始文件
+                    # 原始文件已保存，返回原始 HTML
+                    return final_html
+
+            except Exception as e:
+                print(f"❌ 合规检查异常: {e}")
+                print("   返回原始 HTML")
+                return final_html
+        else:
+            # 未启用合规检查或合规员不可用，直接返回 HTML
+            return final_html
 
     def _generate_fallback_html(
         self,

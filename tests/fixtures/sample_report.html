@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=375, initial-scale=1.0">
-    <title>AAPL 交易分析报告</title>
+    <title>牧原股份 (SZ002714) 投资分析报告</title>
     <style>
+        /* Reset & Base Styles */
         * {
             margin: 0;
             padding: 0;
@@ -13,155 +14,376 @@
 
         body {
             width: 375px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0 auto;
             background-color: #FFFFFF;
             color: #1A1A1A;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", STHeiti, "Microsoft Yahei", Tahoma, Simsun, sans-serif;
             font-size: 18px;
             line-height: 32px;
+            -webkit-font-smoothing: antialiased;
             overflow-x: hidden;
         }
 
+        /* Layout */
         .container {
-            width: 343px;
+            width: 375px;
             padding: 0 16px;
-            margin: 0 auto;
+            /* Content area effectively 343px */
         }
 
-        .header {
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 1px solid #E0E0E0;
-        }
-
-        .title {
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
             color: #1A1A1A;
+            font-weight: 700;
+        }
+
+        h1 {
             font-size: 32px;
             line-height: 40px;
-            margin-bottom: 16px;
-            font-weight: bold;
+            margin: 24px 0 8px 0;
         }
 
-        .subtitle {
-            color: #666666;
-            font-size: 14px;
-            line-height: 20px;
-        }
-
-        .decision {
-            text-align: center;
-            font-size: 32px;
-            line-height: 40px;
-            font-weight: bold;
+        h2 {
+            font-size: 26px;
+            line-height: 36px;
+            margin: 32px 0 16px 0;
             color: #1A1A1A;
-            margin: 20px 0;
-            padding: 24px 20px;
-            background-color: #E8F5E9;
-            border-left: 4px solid #4CAF50;
-            border-radius: 4px;
+            border-bottom: 2px solid #F0F0F0;
+            padding-bottom: 12px;
         }
 
-        .decision-label {
-            font-size: 14px;
-            color: #666666;
-            margin-bottom: 8px;
-        }
-
-        .section {
-            margin: 20px 0;
-            padding: 16px;
-            border-left: 3px solid #E0E0E0;
-            background-color: #FAFAFA;
-            border-radius: 4px;
-        }
-
-        .section-title {
-            color: #333333;
+        h3 {
             font-size: 22px;
             line-height: 30px;
-            margin-bottom: 16px;
-            font-weight: bold;
+            margin: 24px 0 12px 0;
+            color: #333333;
         }
 
-        .content {
+        p {
+            margin-bottom: 24px;
+            text-align: justify;
+        }
+
+        strong, b {
             color: #1A1A1A;
-            font-size: 18px;
-            line-height: 32px;
+            font-weight: 700;
         }
 
-        .content p {
-            margin: 0 0 24px 0;
+        small {
+            font-size: 14px;
+            color: #666666;
+            line-height: 24px;
         }
 
-        .content ul {
-            margin: 0 0 24px 0;
+        /* Header */
+        header {
+            margin-bottom: 16px;
+        }
+        .stock-meta {
+            font-size: 14px;
+            color: #666666;
+            margin-bottom: 4px;
+        }
+
+        /* Decision Card */
+        .decision-card {
+            background-color: #E8F5E9; /* Light Green */
+            border-left: 4px solid #2E7D32; /* Dark Green */
+            padding: 20px;
+            margin-bottom: 32px;
+            border-radius: 0 8px 8px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .decision-label {
+            font-size: 14px;
+            color: #2E7D32;
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .decision-text {
+            font-size: 32px;
+            font-weight: 800;
+            color: #1A1A1A;
+            line-height: 1.2;
+            margin-bottom: 12px;
+        }
+        .decision-sub {
+            font-size: 16px;
+            color: #333;
+            line-height: 24px;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-bottom: 24px;
             padding-left: 20px;
         }
-
-        .content li {
-            margin: 8px 0;
+        li {
+            margin-bottom: 12px;
         }
 
-        .content strong {
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 15px;
+            line-height: 24px;
+            border: 1px solid #E0E0E0;
+        }
+        th {
+            background-color: #F5F5F5;
+            color: #333;
+            font-weight: bold;
+            padding: 10px 8px;
+            text-align: left;
+            border-bottom: 1px solid #E0E0E0;
+        }
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #E0E0E0;
             color: #1A1A1A;
         }
-
-        .footer {
-            margin-top: 40px;
-            padding: 20px;
-            border-top: 1px solid #E0E0E0;
-            font-size: 14px;
-            line-height: 24px;
-            color: #666666;
-            text-align: center;
-            background-color: #FAFAFA;
+        tr:last-child td {
+            border-bottom: none;
         }
 
-        .footer h3 {
-            font-size: 18px;
-            color: #333333;
-            margin-bottom: 16px;
+        /* Utility */
+        .highlight-box {
+            background-color: #F9F9F9;
+            border: 1px solid #E0E0E0;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .debate-speaker {
+            margin-top: 24px;
+            padding-left: 12px;
+            border-left: 3px solid #E0E0E0;
+        }
+
+        .section-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: #F0F0F0;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-right: 8px;
+            color: #555;
+            vertical-align: middle;
+        }
+
+        footer {
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid #E0E0E0;
+            padding-bottom: 40px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1 class="title">AAPL 交易分析报告</h1>
-            <p class="subtitle">分析日期: 2026-03-17 | 生成时间: 2026-03-17 10:30:00</p>
-        </div>
 
-        <div class="decision">
-            <div class="decision-label">最终交易决策</div>
-            买入
-        </div>
+<div class="container">
+    <!-- 1. 页面头部 -->
+    <header>
+        <div class="stock-meta">SZ002714 · 2026-03-22</div>
+        <h1>牧原股份</h1>
+    </header>
 
-        <div class="section">
-            <h2 class="section-title">📊 分析摘要</h2>
-            <div class="content">
-                <p>本报告对市场情况进行了全面分析，结合了基本面、技术面、市场情绪等多维度因素。</p>
-                <p><strong>关键结论</strong>:</p>
-                <ul>
-                    <li>经过多轮分析师讨论和风险评估，最终建议<strong>买入</strong></li>
-                    <li>测试用 HTML 文件用于验证转换功能</li>
-                    <li>包含多个 section 元素</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2 class="section-title">📋 详细分析</h2>
-            <div class="content">
-                <p><strong>基本面分析</strong>: 公司财务状况良好，营收稳定增长。</p>
-                <p><strong>技术面分析</strong>: 技术指标显示上升趋势。</p>
-                <p><strong>市场情绪</strong>: 市场情绪积极，投资者信心较强。</p>
-            </div>
-        </div>
-
-        <div class="footer">
-            <h3>⚠️ 免责声明</h3>
-            <p>本报告由AI分析师生成，仅供参考和学习使用，不构成任何投资建议。</p>
-            <p>投资有风险，入市需谨慎。请根据自身风险承受能力做出投资决策。</p>
+    <!-- 2. 决策卡片 (BUY) -->
+    <div class="decision-card">
+        <span class="decision-label">FINAL DECISION</span>
+        <div class="decision-text">买入 (BUY)</div>
+        <div class="decision-sub">
+            <strong>策略类型：</strong>战略性积累<br>
+            <strong>核心理由：</strong>周期底部成本优势明显，产能去化即将引爆价格反弹
         </div>
     </div>
+
+    <!-- 3. 分析摘要 -->
+    <section>
+        <h2>📋 分析摘要</h2>
+        <p>本报告对牧原股份（SZ002714）进行了全面的多维度分析。尽管面临猪价低于成本的短期阵痛，公司凭借卓越的成本控制和财务健康度，正在成为行业洗牌中的最终赢家。</p>
+        <div class="highlight-box">
+            <strong>关键结论：</strong>
+            <ul>
+                <li>分析师一致建议 <strong>买入</strong></li>
+                <li>Q1-Q3 净利润增长 227%，ROE 提升至近 20%</li>
+                <li>行业正处于深度去产能阶段，底部特征明显</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- 4. 市场分析 -->
+    <section>
+        <h2>📊 市场分析</h2>
+        <p><strong>当前状态：中性/整理</strong></p>
+        <p>股价从 2025 年 9 月高点 ¥53.96 回调至 2 月低点 ¥44.41（跌幅 18%），目前处于 ¥48-¥51 的整理区间。市场在经历显著下跌后，波动性下降（ATR 1.28），正在寻找方向。</p>
+        
+        <h3>关键技术指标</h3>
+        <table>
+            <tr>
+                <th>指标</th>
+                <th>数值</th>
+                <th>含义</th>
+            </tr>
+            <tr>
+                <td>RSI</td>
+                <td>50.0</td>
+                <td>从超卖(25)恢复，动能转正</td>
+            </tr>
+            <tr>
+                <td>布林带</td>
+                <td>中轨 ¥49.45</td>
+                <td>价格在中轨附近整理</td>
+            </tr>
+            <tr>
+                <td>200日均线</td>
+                <td>¥49.45</td>
+                <td>长期趋势走平</td>
+            </tr>
+        </table>
+        
+        <h3>交易策略</h3>
+        <ul>
+            <li><strong>短期：</strong>等待突破 ¥51 或回落至支撑位 ¥47.50。</li>
+            <li><strong>止损：</strong>多头仓位止损设在 ¥46.50。</li>
+        </ul>
+    </section>
+
+    <!-- 5. 基本面分析 -->
+    <section>
+        <h2>💰 基本面分析</h2>
+        <p>尽管行业处于寒冬，牧原股份交出了一份令人惊叹的成绩单：</p>
+        
+        <h3>盈利能力爆发</h3>
+        <ul>
+            <li><strong>净利润增长：</strong>从 Q1 的 462 亿跃升至 Q3 的 1511 亿，增长 <strong>227%</strong>。</li>
+            <li><strong>ROE 转型：</strong>从 Q1 的 6.05% 大幅提升至 Q3 的 <strong>19.85%</strong>。</li>
+            <li><strong>利润率：</strong>净利率维持在 13.5% 左右的强劲水平。</li>
+        </ul>
+
+        <h3>财务堡垒</h3>
+        <ul>
+            <li><strong>资产负债率：</strong>极低，仅约 0.56%，几乎无债务风险。</li>
+            <li><strong>现金流：</strong>经营现金流是净利润的 1.6-1.9 倍，现金回款能力极强。</li>
+            <li><strong>成本优势：</strong>完全成本约 12 元/kg，为行业最低水平之一。</li>
+        </ul>
+
+        <table>
+            <tr>
+                <th>关键指标</th>
+                <th>Q1 2025</th>
+                <th>Q3 2025</th>
+                <th>趋势</th>
+            </tr>
+            <tr>
+                <td>净利润 (亿元)</td>
+                <td>462</td>
+                <td>1511</td>
+                <td style="color: green;">↑↑↑</td>
+            </tr>
+            <tr>
+                <td>ROE (%)</td>
+                <td>6.05</td>
+                <td>19.85</td>
+                <td style="color: green;">↑↑↑</td>
+            </tr>
+            <tr>
+                <td>资产负债率</td>
+                <td>0.59%</td>
+                <td>0.56%</td>
+                <td style="color: green;">极低</td>
+            </tr>
+        </table>
+    </section>
+
+    <!-- 6. 新闻与情绪 -->
+    <section>
+        <h2>📰 新闻与情绪</h2>
+        <p><strong>行业剧痛与政策驱动：</strong></p>
+        <ul>
+            <li>猪价跌破 10 元/kg 关键心理位，全行业陷入亏损（牧原成本 12 元/kg）。</li>
+            <li>中小养殖户被迫去产能，行业正经历残酷的"自然出清"。</li>
+            <li>牧原积极响应政策，将能繁母猪从 1400 万头主动削减至 1330 万头，展示了对周期的精准把控。</li>
+        </ul>
+
+        <p><strong>市场情绪：</strong>谨慎乐观</p>
+        <p>虽然资金流向显示短线主力有流出迹象，但股价持续站稳半年线（200日均线）上方，暗示长线资金正在底部悄然吸筹。</p>
+    </section>
+
+    <!-- 7. 投资辩论 -->
+    <section>
+        <h2>🤔 投资辩论：多空对决</h2>
+        
+        <div class="debate-speaker">
+            <h3 style="color: #2E7D32; margin-top:0;">🐂 多头观点</h3>
+            <p>这不是价值陷阱，而是黄金坑。当前全行业亏损是<strong>不可持续的</strong>。牧原作为成本最低的"幸存者"，将在未来的供应短缺中享受垄断性利润。现在的主动减产是为了明年的高价。财务数据已证明其穿越周期的能力。</p>
+        </div>
+
+        <div class="debate-speaker">
+            <h3 style="color: #C62828; margin-top:0;">🐻 空头观点</h3>
+            <p>这是典型的"死亡螺旋"。每卖一头猪都在亏钱，现金流面临巨大考验。流动比率低于 1.0 是危险的信号。技术反弹只是"死猫跳"，下跌周期可能比预想的更长，现在的买入是去接飞刀。</p>
+        </div>
+    </section>
+
+    <!-- 8. 交易员分析与风险评估 -->
+    <section>
+        <h2>👔 交易员分析与风控</h2>
+        <p><strong>综合评估结论：支持多头</strong></p>
+        <p>虽然空头指出了短期的阵痛，但在商品领域，<strong>成本曲线决定生死</strong>。牧原的财务实力足以支撑其度过寒冬，而竞争对手的退出将重塑供需格局。</p>
+        
+        <h3>🛡️ 风险控制与执行计划</h3>
+        <p>为了平衡多头机会与流动性风险，我们采用<strong>修正后的分层入场策略</strong>：</p>
+        
+        <table>
+            <tr>
+                <th>阶段</th>
+                <th>操作</th>
+                <th>逻辑</th>
+            </tr>
+            <tr>
+                <td>第一阶段 (30%)</td>
+                <td>当前价位立即买入</td>
+                <td>建立底仓，防止踏空底部反弹</td>
+            </tr>
+            <tr>
+                <td>第二阶段 (40%)</td>
+                <td>跌至 ¥46.5 或突破 ¥51</td>
+                <td>恐慌下跌补仓或突破加仓</td>
+            </tr>
+            <tr>
+                <td>第三阶段 (30%)</td>
+                <td>确认反转信号后</td>
+                <td>趋势形成后追涨</td>
+            </tr>
+        </table>
+        
+        <p><strong>止损纪律：</strong>如果价格跌破平均成本的 15%，严格止损，防止"价值陷阱"成真。</p>
+    </section>
+
+    <!-- 9. 决策详情 -->
+    <section>
+        <h2>📝 最终决策详情</h2>
+        <p>基于"行业洗牌论"和"成本优势论"，我们判定牧原股份正处于 <strong>戴维斯双击</strong> 的前夜。</p>
+        <ul>
+            <li><strong>核心逻辑：</strong>猪价跌破成本线引发加速去产能 -> 18个月后供应短缺 -> 猪价暴涨。</li>
+            <li><strong>为何买入：</strong>以当前的亏损价格买入行业龙头，相当于买入了未来周期的暴利期权。</li>
+            <li><strong>预期收益：</strong>若周期反转成功，目标价位 ¥54-55，具备显著上升空间。</li>
+        </ul>
+    </section>
+
+    <!-- 10. 免责声明 -->
+    <footer>
+        <p style="font-size: 12px; color: #999; line-height: 20px;">
+            <strong>免责声明：</strong><br>
+            本报告由 AI 分析师生成，仅供投资参考与学习，不构成任何买卖建议。股市有风险，入市需谨慎。请根据自身风险承受能力独立做出投资决策。
+        </p>
+    </footer>
+
+</div>
+
 </body>
 </html>
