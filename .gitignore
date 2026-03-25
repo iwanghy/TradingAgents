@@ -221,4 +221,4 @@ __marimo__/
 reports
 eval_results
 
-logs
+logs/*
