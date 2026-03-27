@@ -1,20 +1,14 @@
 {
-  "active_plan": "/home/why/github/TradingAgents/.sisyphus/plans/compliance-review.md",
-  "started_at": "2026-03-23T02:10:08.406Z",
+  "active_plan": "/home/why/github/TradingAgents/.sisyphus/plans/data-resilience-improvement.md",
+  "started_at": "2026-03-25T06:03:15.666Z",
   "session_ids": [
-    "ses_2e79e9701ffeUg2pVFYXp5fdWb",
-    "ses_2e7846afaffecPnJJTRjsA0FeD",
-    "ses_2e784111effeNlr6yC6Y8UJdjn",
-    "ses_2e7843987ffeHhlnuNU4MIxc11",
-    "ses_2e7807eb5ffewnHehkbyLcwd6p",
-    "ses_2e77e10bfffeSzeJjqlagXTaw4",
-    "ses_2e77c036dffenRLq0MRDub1p06",
-    "ses_2e77a2620ffebVTRoKPqg90f13",
-    "ses_2e778494cffeHhzol0So7TAikc",
-    "ses_2e778307cffegQMngB5XR9BGBI",
-    "ses_2e778193bffeowNNs4he889xzs",
-    "ses_2e77861c3ffe8BDApbwJQPTaqf"
+    "ses_2dd01d9cfffe0xIZEMh5AfPBk9",
+    "ses_2dc65acb9ffeszntBCmn1pLXmq",
+    "ses_2dc65ae06ffePdtjZvH5VjIbTO",
+    "ses_2dc644378ffe2byI5bD6AxES8W",
+    "ses_2dc6394c7ffepIkb8HbR6YE4sJ"
   ],
-  "plan_name": "compliance-review",
-  "agent": "atlas"
+  "plan_name": "data-resilience-improvement",
+  "worktree_path": null,
+  "task_sessions": {}
 }

@@ -31,11 +31,21 @@ class ComplianceResult:
         original_html: The original HTML content before review
         compliant_html: The HTML content after compliance modifications
         error_message: Error message if review failed, None otherwise
+        is_violation: Whether the content violates platform rules (for platform review)
+        violation_categories: List of violation categories (for platform review)
+        violation_reasons: List of specific violation reasons (for platform review)
+        risk_level: Risk level - high/medium/low (for platform review)
+        suggestions: Suggestions for fixing violations (for platform review)
     """
     is_success: bool
     original_html: str
     compliant_html: str
     error_message: Optional[str] = None
+    is_violation: Optional[bool] = None
+    violation_categories: Optional[list] = None
+    violation_reasons: Optional[list] = None
+    risk_level: Optional[str] = None
+    suggestions: Optional[str] = None
 
 
 def create_compliance_officer(llm_client, timeout: int = 30):
@@ -55,6 +65,147 @@ def create_compliance_officer(llm_client, timeout: int = 30):
         def __init__(self, llm_client, timeout: int):
             self.llm_client = llm_client
             self.timeout = timeout
+
+        def review_for_platform(
+            self,
+            content: str,
+            platform: str = "xiaohongshu",
+            max_retries: int = 3
+        ) -> ComplianceResult:
+            """Review content against platform compliance rules.
+
+            Args:
+                content: Text content to review
+                platform: Platform name (currently supports "xiaohongshu")
+                max_retries: Maximum retry attempts for JSON parsing failures
+
+            Returns:
+                ComplianceResult with violation detection results
+            """
+            from .rules import XIAOHONGSHU_REVIEW_PROMPT
+
+            if platform != "xiaohongshu":
+                return ComplianceResult(
+                    is_success=False,
+                    original_html=content,
+                    compliant_html=content,
+                    error_message=f"Unsupported platform: {platform}"
+                )
+
+            import json
+            import re
+
+            llm = self.llm_client.get_llm()
+
+            for attempt in range(max_retries):
+                try:
+                    messages = [
+                        SystemMessage(content=XIAOHONGSHU_REVIEW_PROMPT),
+                        HumanMessage(content=content),
+                    ]
+                    result = llm.invoke(messages)
+
+                    json_match = re.search(r'\{[^{}]*\}', result.content, re.DOTALL)
+                    if json_match:
+                        review_data = json.loads(json_match.group())
+                        return ComplianceResult(
+                            is_success=True,
+                            original_html=content,
+                            compliant_html=content,
+                            is_violation=review_data.get("is_violation", False),
+                            violation_categories=review_data.get("violation_categories", []),
+                            violation_reasons=review_data.get("violation_reasons", []),
+                            risk_level=review_data.get("risk_level", "low"),
+                            suggestions=review_data.get("suggestions", ""),
+                        )
+                except (json.JSONDecodeError, Exception):
+                    if attempt == max_retries - 1:
+                        error_msg = f"JSON parsing failed after {max_retries} attempts"
+                        return ComplianceResult(
+                            is_success=False,
+                            original_html=content,
+                            compliant_html=content,
+                            error_message=error_msg
+                        )
+
+            return ComplianceResult(
+                is_success=False,
+                original_html=content,
+                compliant_html=content,
+                error_message="Max retries exceeded"
+            )
+
+        def revise_for_platform(
+            self,
+            content: str,
+            platform: str = "xiaohongshu",
+            max_retries: int = 3
+        ) -> ComplianceResult:
+            """Revise content to comply with platform rules.
+
+            Args:
+                content: HTML content to revise
+                platform: Platform name (currently supports "xiaohongshu")
+                max_retries: Maximum retry attempts
+
+            Returns:
+                ComplianceResult with revised content
+            """
+            from .rules import XIAOHONGSHU_REVISE_PROMPT
+
+            if platform != "xiaohongshu":
+                return ComplianceResult(
+                    is_success=False,
+                    original_html=content,
+                    compliant_html=content,
+                    error_message=f"Unsupported platform: {platform}"
+                )
+
+            llm = self.llm_client.get_llm()
+
+            for attempt in range(max_retries):
+                try:
+                    messages = [
+                        SystemMessage(content=XIAOHONGSHU_REVISE_PROMPT),
+                        HumanMessage(content=content),
+                    ]
+                    result = llm.invoke(messages)
+                    revised_content = result.content.strip()
+
+                    if revised_content == "CONTENT_IRREVERSIBLE":
+                        return ComplianceResult(
+                            is_success=True,
+                            original_html=content,
+                            compliant_html=content,
+                            is_violation=True,
+                            violation_reasons=["内容无法合规修改"],
+                            risk_level="high",
+                            suggestions="该内容无法修改为合规版本，建议重新创作"
+                        )
+
+                    if len(revised_content) > 100:
+                        return ComplianceResult(
+                            is_success=True,
+                            original_html=content,
+                            compliant_html=revised_content,
+                            is_violation=False,
+                        )
+
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        return ComplianceResult(
+                            is_success=False,
+                            original_html=content,
+                            compliant_html=content,
+                            error_message=f"Revision failed: {str(e)}"
+                        )
+
+            return ComplianceResult(
+                is_success=False,
+                original_html=content,
+                compliant_html=content,
+                error_message="Max retries exceeded"
+            )
 
         def review_html(self, html_content: str) -> ComplianceResult:
             """Review HTML content for compliance.

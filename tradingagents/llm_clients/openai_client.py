@@ -63,6 +63,11 @@ class OpenAIClient(BaseLLMClient):
             api_key = os.environ.get("ZHIPU_API_KEY") or self.kwargs.get("api_key")
             if api_key:
                 llm_kwargs["api_key"] = api_key
+        elif self.provider == "infini":
+            llm_kwargs["base_url"] = "https://cloud.infini-ai.com/maas/coding/v1"
+            api_key = os.environ.get("INFINI_API_KEY") or self.kwargs.get("api_key")
+            if api_key:
+                llm_kwargs["api_key"] = api_key
         elif self.base_url:
             llm_kwargs["base_url"] = self.base_url
 

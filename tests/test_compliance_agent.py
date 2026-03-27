@@ -275,3 +275,79 @@ def test_mixed_language_terms():
     # assert "HOLD" not in result
     # assert "值得研究" in result or "关注度较高" in result
     # pytest.skip("功能尚未实现 - TDD Red Phase")
+
+
+# ========== 小红书平台审核测试 ==========
+
+def test_xiaohongshu_rules_exist():
+    """测试小红书审核规则定义"""
+    from tradingagents.agents.compliance.rules import (
+        XIAOHONGSHU_PROHIBITED_CATEGORIES,
+        XIAOHONGSHU_PROFIT_INDUCEMENT,
+        XIAOHONGSHU_TRAFFIC_DIVERSION,
+        XIAOHONGSHU_HIGH_RETURN_CLAIMS,
+    )
+
+    assert isinstance(XIAOHONGSHU_PROHIBITED_CATEGORIES, dict)
+    assert "股票投资" in XIAOHONGSHU_PROHIBITED_CATEGORIES
+    assert "股票" in XIAOHONGSHU_PROHIBITED_CATEGORIES["股票投资"]
+
+    assert isinstance(XIAOHONGSHU_PROFIT_INDUCEMENT, list)
+    assert "稳赚" in XIAOHONGSHU_PROFIT_INDUCEMENT
+    assert "暴富" in XIAOHONGSHU_PROFIT_INDUCEMENT
+
+    assert isinstance(XIAOHONGSHU_TRAFFIC_DIVERSION, list)
+    assert "加微信" in XIAOHONGSHU_TRAFFIC_DIVERSION
+    assert "进群" in XIAOHONGSHU_TRAFFIC_DIVERSION
+
+    assert isinstance(XIAOHONGSHU_HIGH_RETURN_CLAIMS, list)
+    assert "翻倍" in XIAOHONGSHU_HIGH_RETURN_CLAIMS
+    assert "十倍" in XIAOHONGSHU_HIGH_RETURN_CLAIMS
+
+
+def test_xiaohongshu_system_prompt():
+    """测试小红书审核系统提示词"""
+    from tradingagents.agents.compliance.rules import XIAOHONGSHU_REVIEW_PROMPT
+
+    assert "小红书内容合规审核助手" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "禁止分享股票" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "禁止盈利诱导" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "禁止导流行为" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "禁止高回报噱头" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "is_violation" in XIAOHONGSHU_REVIEW_PROMPT
+    assert "risk_level" in XIAOHONGSHU_REVIEW_PROMPT
+
+
+def test_compliance_result_has_platform_fields():
+    """测试 ComplianceResult 包含平台审核字段"""
+    from tradingagents.agents.compliance import ComplianceResult
+
+    result = ComplianceResult(
+        is_success=True,
+        original_html="test",
+        compliant_html="test",
+        is_violation=True,
+        violation_categories=["股票投资"],
+        violation_reasons=["包含股票术语"],
+        risk_level="high",
+        suggestions="删除股票相关内容"
+    )
+
+    assert result.is_violation is True
+    assert result.violation_categories == ["股票投资"]
+    assert result.violation_reasons == ["包含股票术语"]
+    assert result.risk_level == "high"
+    assert result.suggestions == "删除股票相关内容"
+
+
+def test_review_for_platform_unsupported():
+    """测试不支持的平台"""
+    from tradingagents.agents.compliance import create_compliance_officer
+
+    mock_client = MagicMock()
+    officer = create_compliance_officer(mock_client)
+
+    result = officer.review_for_platform("test content", platform="unsupported")
+
+    assert result.is_success is False
+    assert "Unsupported platform" in result.error_message

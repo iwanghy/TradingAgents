@@ -75,145 +75,50 @@ tests/               # 测试套件
 
 ### 导入组织
 
-```python
-# 1. 标准库
-import os
-import logging
-from typing import Dict, Any, Optional, Annotated
-
-# 2. 第三方库
-from langgraph.graph import StateGraph, END, START
-
-# 3. 本地模块（绝对导入）
-from tradingagents.llm_clients import create_llm_client
-from tradingagents.default_config import DEFAULT_CONFIG
-```
-
-可选依赖使用 try/except 保护：
-```python
-try:
-    from .sina_finance import get_sina_data_online
-except ImportError:
-    get_sina_data_online = None
-```
+- 标准库 → 第三方库 → 本地模块（绝对导入）。
+- 可选依赖使用 `try/except ImportError` 保护。
 
 ### 类型提示
 
-```python
-# 公共函数必须有完整类型提示
-def create_llm_client(
-    provider: str,
-    model: str,
-    base_url: Optional[str] = None,
-    **kwargs,
-) -> BaseLLMClient:
-
-# LangGraph 工具函数使用 Annotated（描述供 LLM 理解）
-def get_stock_data(symbol: Annotated[str, "ticker symbol"]) -> str:
-
-# 状态定义使用 TypedDict + Annotated
-class AgentState(MessagesState):
-    company_of_interest: Annotated[str, "Company that we are interested in trading"]
-    trade_date: Annotated[str, "What date we are trading at"]
-```
+- 公共函数必须有完整类型提示。
+- LangGraph 工具函数使用 `Annotated[type, "description"]`。
+- 状态定义使用 `TypedDict` + `Annotated`。
 
 ### 文档字符串
 
-使用 Google 风格 docstring，支持中英文混合：
-```python
-def invoke_with_timeout(self, messages: Any, max_retries: int = 2) -> Any:
-    """
-    调用LLM并设置超时保护
-
-    Args:
-        messages: 消息列表
-        max_retries: 最大重试次数
-
-    Raises:
-        TimeoutError: 超时或重试耗尽
-    """
-```
+使用 Google 风格 docstring，支持中英文混合。
 
 ### 错误处理
 
-```python
-# 1. 工具函数：返回错误消息字符串（不抛异常）
-if data.empty:
-    return f"No data found for symbol '{symbol}'"
-
-# 2. 数据层：自定义异常触发供应商 fallback
-except AlphaVantageRateLimitError:
-    continue  # 路由到下一个供应商
-
-# 3. 模块级：config 校验抛 ValueError
-if provider_lower not in ("openai", "anthropic", "google"):
-    raise ValueError(f"Unsupported LLM provider: {provider}")
-```
+- **工具函数**: 返回错误消息字符串（不抛异常）。
+- **数据层**: 自定义异常触发供应商 fallback。
+- **模块级**: config 校验抛 `ValueError`。
 
 ### 日志规范
 
-使用 `logging.getLogger(__name__)`，结构化标签前缀：
-```python
-logger.info(f"[ROUTE_DECISION] {method} -> {vendors}")
-logger.warning(f"[RATE_LIMIT] Alpha Vantage | {method}")
-logger.error(f"[VENDOR_ERROR] {vendor} | {error}")
-```
-
-配置位于 `dataflows/logging_config.py`，日志：`./logs/tradingagents.log`
+- 使用 `logging.getLogger(__name__)`。
+- 日志标签：`[ROUTE_DECISION]`, `[RATE_LIMIT]`, `[VENDOR_ERROR]`。
+- 配置位于 `dataflows/logging_config.py`，日志文件：`./logs/tradingagents.log`。
 
 ## 设计模式
 
 ### 工厂模式（代理节点）
 
-所有代理通过闭包工厂创建，返回符合 LangGraph 的节点函数：
-
-```python
-def create_fundamentals_analyst(llm):
-    def fundamentals_analyst_node(state):
-        ticker = state["company_of_interest"]
-        # ... prompt + chain 构建逻辑 ...
-        return {"messages": [result], "fundamentals_report": report}
-    return fundamentals_analyst_node
-```
-
-**关键**: 节点返回字典，仅包含**更新的** state 字段，不返回完整 state。
+所有代理通过闭包工厂 `create_xxx(llm)` 创建，返回符合 LangGraph 的节点函数。节点返回字典，仅包含**更新的** state 字段。
 
 ### 路由器模式（数据供应商）
 
-`dataflows/interface.py` 实现多供应商路由，支持 fallback：
-
-```python
-from tradingagents.dataflows.interface import route_to_vendor
-result = route_to_vendor("get_stock_data", "AAPL", "2024-01-01", "2024-01-31")
-```
-
-供应商优先级：工具级 `tool_vendors` > 类别级 `data_vendors` > 默认值。仅 `AlphaVantageRateLimitError` 触发 fallback，其他异常直接抛出。
+`dataflows/interface.py` 实现多供应商路由 + fallback。优先级：工具级 > 类别级 > 默认值。仅 `AlphaVantageRateLimitError` 触发 fallback。
 
 ### LLM 客户端模式
 
-```python
-# 创建客户端（工厂模式）
-from tradingagents.llm_clients import create_llm_client
-
-llm_client = create_llm_client(
-    provider="openai",
-    model="gpt-5.2",
-    base_url="https://api.openai.com/v1",
-    invoke_timeout=120  # LLM调用超时保护
-)
-
-# 调用 LLM（带超时和重试）
-result = llm_client.invoke_with_timeout(messages, max_retries=3)
-```
+- 工厂函数 `create_llm_client()` 创建客户端。
+- 支持超时保护 `invoke_with_timeout()`。
 
 ### 配置管理
 
-```python
-from tradingagents.default_config import DEFAULT_CONFIG
-config = DEFAULT_CONFIG.copy()  # 必须复制，禁止原地修改
-```
-
-运行时配置通过 `dataflows/config.py` 的 `get_config()` / `set_config()` 管理。
+- 必须使用 `DEFAULT_CONFIG.copy()`，禁止原地修改。
+- 运行时配置通过 `dataflows/config.py` 的 `get_config()` / `set_config()` 管理。
 
 ## 环境变量
 

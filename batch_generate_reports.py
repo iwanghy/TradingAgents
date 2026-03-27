@@ -94,8 +94,8 @@ def parse_args():
     parser.add_argument(
         "--debate-rounds",
         type=int,
-        default=1,
-        help="辩论轮数（默认: 1，更深入分析可设置为 2-3）"
+        default=2,
+        help="辩论轮数（默认: 2，更深入分析可设置为 2-3）"
     )
     
     parser.add_argument(
@@ -108,8 +108,8 @@ def parse_args():
     parser.add_argument(
         "--quick-model",
         type=str,
-        default="glm-4.5-air",
-        help="快速模型名称（默认: glm-4.5-air）"
+        default="glm-4.7",
+        help="快速模型名称（默认: glm-4.7）"
     )
     
     parser.add_argument(

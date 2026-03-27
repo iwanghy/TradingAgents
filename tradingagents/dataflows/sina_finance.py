@@ -8,6 +8,7 @@ import requests
 import pandas as pd
 import logging
 import time
+import threading
 from datetime import datetime
 from typing import Annotated, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -19,6 +20,9 @@ except ImportError:
     BAOSTOCK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# baostock 不是线程安全的，需要全局锁保护 login/logout 操作
+_BAOSTOCK_LOCK = threading.Lock()
 
 # 新浪财经 API 配置
 SINA_BASE_URL = "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php"
@@ -218,31 +222,33 @@ def _get_baostock_financial_data(
     query_func = api_map[data_type]
     
     def _fetch_data():
-        """实际获取数据的函数"""
-        # 登录 baostock
-        lg = bs.login()
-        if lg.error_code != '0':
-            logger.error(f"[BAOSTOCK] Login failed: {lg.error_msg}")
-            return None
+        return actual_fetch_data()
         
-        # 转换股票代码格式：sh600519 -> sh.600519
+    def actual_fetch_data():
+        with _BAOSTOCK_LOCK:
+            lg = bs.login()
+            if lg.error_code != '0':
+                logger.error(f"[BAOSTOCK] Login failed: {lg.error_msg}")
+                return None
+            
+            try:
+                return _do_fetch_data()
+            finally:
+                bs.logout()
+    
+    def _do_fetch_data():
         symbol = ticker.lower()
         if symbol.startswith('sh') or symbol.startswith('sz'):
             baostock_code = f"{symbol[:2]}.{symbol[2:]}"
         else:
             logger.error(f"[BAOSTOCK] Invalid ticker format: {ticker}")
-            bs.logout()
             return None
         
-        # 获取最近 4 个季度的数据
-        # 如果当前年 Q3 没有数据，使用上一年
-        from datetime import datetime
         current_year = datetime.now().year
         
-        # 先尝试当前年 Q3，如果无数据则使用上一年
         test_rs = query_func(code=baostock_code, year=current_year, quarter=3)
         has_current_year_data = False
-        while (test_rs.error_code == '0') & test_rs.next():
+        while (test_rs.error_code == '0') and test_rs.next():
             has_current_year_data = True
             break
         
@@ -254,7 +260,6 @@ def _get_baostock_financial_data(
                 (current_year - 1, 4),
             ]
         else:
-            # 当前年无数据，使用上一年
             quarters = [
                 (current_year - 1, 4),
                 (current_year - 1, 3),
@@ -262,48 +267,43 @@ def _get_baostock_financial_data(
                 (current_year - 1, 1),
             ]
         
-        # 收集数据
         all_data = []
+        fields = None
         for year, quarter in quarters:
             rs = query_func(code=baostock_code, year=year, quarter=quarter)
             if rs.error_code != '0':
                 logger.warning(f"[BAOSTOCK] Query failed for {year}-Q{quarter}: {rs.error_msg}")
                 continue
             
-            # 获取第一行数据
-            while (rs.next()):
+            fields = rs.fields
+            while rs.next():
                 row_data = rs.get_row_data()
                 all_data.append({
                     'period': f"{year}Q{quarter}",
                     'data': row_data
                 })
-                break  # 只取第一行
-        
-        # 登出
-        bs.logout()
+                break
         
         if not all_data:
             logger.warning(f"[BAOSTOCK] No data found for {ticker} ({data_type})")
             return None
         
-        # 构建 Markdown 表格
-        fields = rs.fields  # 列名
+        if fields is None:
+            logger.warning(f"[BAOSTOCK] No fields available for {ticker} ({data_type})")
+            return None
         
-        # 表头
         header_row = "| 项目 | " + " | ".join([item['period'] for item in all_data]) + " |"
         separator_row = "|" + "|".join(["------" for _ in range(len(all_data) + 1)]) + "|"
         
-        # 数据行
         data_rows = []
         for i, field in enumerate(fields):
             row_cells = [field]
             for item in all_data:
-                row_cells.append(item['data'][i])
+                row_cells.append(str(item['data'][i]) if i < len(item['data']) else '')
             data_rows.append("| " + " | ".join(row_cells) + " |")
         
         markdown_table = "\n".join([header_row, separator_row] + data_rows)
         
-        # 添加标题
         data_type_map = {
             'profit': '利润表',
             'balance': '资产负债表',
@@ -313,32 +313,21 @@ def _get_baostock_financial_data(
         }
         
         title = f"# {ticker.upper()} {data_type_map.get(data_type, data_type)}（来自 baostock）\n\n"
-        result = title + markdown_table
-        
-        return result
+        return title + markdown_table
     
     # 使用线程池添加超时保护
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_fetch_data)
-            # 设置30秒超时
             result = future.result(timeout=30)
             if result:
                 logger.info(f"[BAOSTOCK_SUCCESS] {ticker} | {data_type} | records={result.count('Q') // 2}")
             return result
     except FutureTimeoutError:
         logger.error(f"[BAOSTOCK_TIMEOUT] {ticker} | {data_type} | 查询超时(30s)")
-        try:
-            bs.logout()
-        except:
-            pass
         return None
     except Exception as e:
         logger.error(f"[BAOSTOCK_ERROR] {ticker} | {data_type} | error={str(e)}")
-        try:
-            bs.logout()
-        except:
-            pass
         return None
 
 
