@@ -910,12 +910,11 @@ class ReportGenerator:
                 # 如果没有任何有效结果，返回一个基本的 HTML 模板
                 final_html = self._generate_fallback_html(state, decision, translate)
 
-        # 4. 合规检查（如果启用且合规员可用）
+        # 4. 小红书违规审查（如果启用且合规员可用）
         if enable_compliance and self.compliance_officer:
             try:
-                print("🔍 开始合规检查...")
+                print("🔍 开始小红书违规审查...")
 
-                # 生成文件名
                 ticker = state.get("company_of_interest", "report")
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 base_filename = f"{ticker}_{timestamp}"
@@ -923,40 +922,31 @@ class ReportGenerator:
                 # 保存原始 HTML
                 original_filepath = Path("reports") / f"{base_filename}_original.html"
                 original_filepath.parent.mkdir(parents=True, exist_ok=True)
-
                 with open(original_filepath, 'w', encoding='utf-8') as f:
                     f.write(final_html)
                 print(f"✅ 原始 HTML 已保存: {original_filepath}")
 
-                # 调用合规员检查
-                compliance_result = self.compliance_officer.review_html(final_html)
+                revise_result = self.compliance_officer.revise_for_platform(final_html, platform="xiaohongshu")
 
-                if compliance_result.is_success:
-                    print("✅ 合规检查通过")
-                    compliant_html = compliance_result.compliant_html
+                if revise_result.is_success:
+                    print("✅ 违规内容已自动修复")
+                    compliant_html = revise_result.compliant_html
 
-                    # 保存合规 HTML
+                    # 保存修复后的 HTML
                     compliant_filepath = Path("reports") / f"{base_filename}_compliant.html"
                     with open(compliant_filepath, 'w', encoding='utf-8') as f:
                         f.write(compliant_html)
-                    print(f"✅ 合规 HTML 已保存: {compliant_filepath}")
+                    print(f"✅ 小红书合规 HTML 已保存: {compliant_filepath}")
 
-                    # 返回合规后的 HTML
                     return compliant_html
                 else:
-                    print(f"⚠️ 合规检查失败: {compliance_result.error_message}")
-                    print("   返回原始 HTML")
-
-                    # 即使失败也保存原始文件
-                    # 原始文件已保存，返回原始 HTML
+                    print("❌ 违规内容无法自动修复")
                     return final_html
 
             except Exception as e:
-                print(f"❌ 合规检查异常: {e}")
-                print("   返回原始 HTML")
+                print(f"❌ 小红书违规审查异常: {e}")
                 return final_html
         else:
-            # 未启用合规检查或合规员不可用，直接返回 HTML
             return final_html
 
     def _generate_fallback_html(
