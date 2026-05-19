@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument(
         "--debate-rounds",
         type=int,
-        default=2,
+        default=3,
         help="辩论轮数（默认: 2，更深入分析可设置为 2-3）"
     )
     

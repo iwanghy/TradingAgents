@@ -1,0 +1,7 @@
+✅ DOM structure validated
+  - container: present
+  - sections: 7
+  - header: present
+  - footer: present
+  - decision-card: present
+  - script tags: 0

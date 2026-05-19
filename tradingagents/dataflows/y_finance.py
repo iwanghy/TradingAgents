@@ -349,6 +349,11 @@ def _get_stock_stats_bulk(
                 # Parse CSV
                 data = pd.read_csv(StringIO('\n'.join(csv_lines)))
 
+                # 新浪财经返回的数据是降序的，需要按日期升序排序
+                # stockstats 需要升序数据才能正确计算 RSI/MACD 等指标
+                if 'Date' in data.columns:
+                    data = data.sort_values('Date').reset_index(drop=True)
+
                 # Cache the data
                 data.to_csv(data_file, index=False)
                 logger.info(f"[A_SHARE] Cached {len(data)} records from sina_finance")
